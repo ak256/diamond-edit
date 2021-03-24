@@ -5,11 +5,14 @@
 #ifndef __WINDOW_H__
 #define __WINDOW_H__
 
+#include "io.h"
+
 struct Window {
 	struct Window *above; // nearby window
 	struct Window *below;
 	struct Window *left;
 	struct Window *right;
+	struct FileBuf filebuf;
 	int x;
 	int y;
 	int cursor_line;
