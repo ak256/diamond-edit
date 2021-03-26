@@ -8,30 +8,44 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-struct PieceTableRow {
-	int32_t start; // sign bit indicates which buffer. 0 -> origin, 1 -> append
-	uint32_t length;
+#define BUF_ID_ORIGIN 0
+#define BUF_ID_APPEND 1
+#define BUF_ID_DELETE 2
+
+typedef uint32_t index_t;
+
+struct PieceTableEntry {
+	struct PieceTableEntry *prev;
+	struct PieceTableEntry *next;
+	index_t start;
+	index_t length;
+	int8_t buf_id;
 };
 
 struct PieceTable {
 	// keep origin before append buf. see 'start' field of PieceTableRow
 	char *origin_buf;
 	char *append_buf;
-	struct PieceTableRow *rows;
+	struct PieceTableEntry *first_entry; // entries are linked together
+	struct PieceTableEntry *current_entry; // most recently used entry for fast access
 	uint32_t append_buf_count;
 	uint32_t append_buf_size;
-	uint32_t rows_count;
-	uint32_t rows_size;
+	uint32_t origin_buf_size;
+	uint32_t entries_count;
 };
 
 struct FileBuf {
-	struct PieceTable table;
+	PieceTableEntry **history; // for undo/redo
 	char *path;
+	struct PieceTable table;
+	uint32_t history_size;
+	uint32_t history_count;
+	uint32_t history_index;
 };
 
 void filebuf_init_empty(struct FileBuf *fb, char *path);
 void filebuf_backspace(struct FileBuf *fb);
-void filebuf_insert(struct FileBuf *fb, int index, char c);
+void filebuf_insert(struct FileBuf *fb, index_t index, char *string, int string_length);
 void filebuf_undo(struct FileBuf *fb);
 void filebuf_redo(struct FileBuf *fb);
 

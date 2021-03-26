@@ -10,27 +10,59 @@
 #include "filebuf.h"
 
 void filebuf_init_empty(struct FileBuf *fb, char *path) {
-	fb->buf_size = 4096 * 4;
-	fb->buf = malloc(sizeof(char) * init_size);
-	fb->buf_count = 0;
+	const int init_buf_size = 4096 * 2; // don't go much smaller than this
+
+	struct PieceTable table;
+	table.origin_buf = NULL;
+	table.origin_buf_size = 0;
+	table.append_buf = malloc(sizeof(char) * init_buf_size);
+	table.append_buf_size = init_buf_size;
+	table.append_buf_count = 0;
+	table.entries_count = 1;
+
+	struct PieceTableEntry first_entry;
+	first_entry.prev = NULL;
+	first_entry.next = NULL;
+	first_entry.start = 0;
+	first_entry.length = 0;
+	first_entry.buf_id = BUF_ID_ORIGIN;
+	table.first_entry = first_entry;
+
+	fb->table = table;
 	fb->path = path;
+
+	fb->history_count = 0;
+	fb->history_index = 0;
+	fb->history_size = init_buf_size;
+	fb->history = malloc(sizeof(PieceTableEntry*) * fb->history_size);
 }
 
 void filebuf_backspace(struct FileBuf *fb) {
-	if (fb->buf_count == 0) return;
-	fb->buf_count--;
+	// TODO
 }
 
-void filebuf_insert(struct FileBuf *fb, int index, char c) {
-	// TODO
+void filebuf_insert(struct FileBuf *fb, index_t index, char *string, unsigned int string_length) {
+	struct PieceTableRow append_row;
+	added.start = index;
+	added.length = string_length;
+	added.buf_id = BUF_ID_APPEND;
+	
+	fb->table.entries_count++;
+	fb->history_count = fb->history_index + 1;
+	// FIXME free deleted history piece entries
 }
 
 void filebuf_undo(struct FileBuf *fb) {
- 	// TODO
+	if (fb->history_index == 0) return;
+	fb->history_index--;
+	// FIXME update table entries to reflect undoing
+	fb->table.current_entry = fb->table.current_entry->prev;
 }
 
 void filebuf_redo(struct FileBuf *fb) {
-	// TODO
+	if (fb->history_index >= fb->history_count) return;
+	// FIXME update table entries to reflect redoing
+	fb->history_index++;
 }
 
 /* Attempts to load the entire file at the path into the buffer.
