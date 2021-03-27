@@ -26,6 +26,7 @@ void filebuf_init_empty(struct FileBuf *fb, char *path) {
 	first_entry.start = 0;
 	first_entry.length = 0;
 	first_entry.buf_id = BUF_ID_ORIGIN;
+	first_entry.undone = false;
 	table.first_entry = first_entry;
 
 	fb->table = table;
@@ -34,34 +35,48 @@ void filebuf_init_empty(struct FileBuf *fb, char *path) {
 	fb->history_count = 0;
 	fb->history_index = 0;
 	fb->history_size = init_buf_size;
-	fb->history = malloc(sizeof(PieceTableEntry*) * fb->history_size);
+	fb->history = malloc(sizeof(PieceTableEntry) * fb->history_size);
 }
 
-void filebuf_backspace(struct FileBuf *fb) {
-	// TODO
-}
-
-void filebuf_insert(struct FileBuf *fb, index_t index, char *string, unsigned int string_length) {
-	struct PieceTableRow append_row;
-	added.start = index;
-	added.length = string_length;
-	added.buf_id = BUF_ID_APPEND;
-	
+static void after_new_entry(struct Filebuf *fb) {
 	fb->table.entries_count++;
-	fb->history_count = fb->history_index + 1;
-	// FIXME free deleted history piece entries
+
+	// erase any redo history
+	fb->history_index++; 
+	for (int i = fb->history_index; i < fb->history_count - 1; i++) {
+		struct PieceTableEntry *remove = &fb->history[i];
+		remove->prev->next = remove->next;
+		remove->next->prev = remove->prev;
+	}
+	if (fb->history_index < fb->history_count) {
+		struct PieceTableEntry *remove = &fb->history[fb->history_count - 1];
+		remove->prev->next = remove->next;
+	}
+	fb->history_count = fb->history_index;
+}
+
+void filebuf_insert(struct FileBuf *fb, char c) {
+	// TODO append to fb->append_buf
+}
+
+void filebuf_finish_insert(struct FileBuf *fb, index_t index, unsigned int string_length) {
+	struct PieceTableEntry *entry = &fb->history[fb->history_index];
+	entry->start = index;
+	entry->length = string_length;
+	entry->buf_id = BUF_ID_APPEND;
+	entry->undone = false;
+	after_new_entry(fb);
 }
 
 void filebuf_undo(struct FileBuf *fb) {
 	if (fb->history_index == 0) return;
 	fb->history_index--;
-	// FIXME update table entries to reflect undoing
-	fb->table.current_entry = fb->table.current_entry->prev;
+	fb->history[fb->history_index].undone = true;
 }
 
 void filebuf_redo(struct FileBuf *fb) {
 	if (fb->history_index >= fb->history_count) return;
-	// FIXME update table entries to reflect redoing
+	fb->history[fb->history_index].undone = false;
 	fb->history_index++;
 }
 

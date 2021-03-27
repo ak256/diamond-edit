@@ -49,6 +49,8 @@ int main(int arg_count, char **args) {
 	terminal_cursor_home();
 	signal(SIGINT, &interrupt_handler);
 
+	int insert_index;
+	int insert_length;
 	bool selecting = false;
 	char c;
 	while ((c = getchar()) != EOF) {
@@ -66,11 +68,23 @@ int main(int arg_count, char **args) {
 				// TODO
 				terminal_cursor_left(word_len);
 				break; }
+			case 'f': 
+				mode = MODE_INSERT;
+				insert_index = current->cursor_index;
+				insert_length = 0;
+				break;
 			}
 		} else if (mode == MODE_INSERT) {
 			switch (c) {
-			case '\b': filebuf_backspace(&current.filebuf); break;
-			default: filebuf_insert(&current.filebuf, c); break;
+			case '\b': break; // TODO backspace
+			case '':
+				filebuf_finish_insert(&current.filebuf, insert_index, insert_length);
+				mode = MODE_COMMAND; 
+				break;
+			default: 
+				filebuf_insert(&current.filebuf, c);
+				insert_length++;
+				break;
 			}
 		}
 	}

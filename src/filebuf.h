@@ -20,6 +20,7 @@ struct PieceTableEntry {
 	index_t start;
 	index_t length;
 	int8_t buf_id;
+	bool undone;
 };
 
 struct PieceTable {
@@ -35,7 +36,7 @@ struct PieceTable {
 };
 
 struct FileBuf {
-	PieceTableEntry **history; // for undo/redo
+	PieceTableEntry *history; // for undo/redo
 	char *path;
 	struct PieceTable table;
 	uint32_t history_size;
@@ -44,7 +45,6 @@ struct FileBuf {
 };
 
 void filebuf_init_empty(struct FileBuf *fb, char *path);
-void filebuf_backspace(struct FileBuf *fb);
 void filebuf_insert(struct FileBuf *fb, index_t index, char *string, int string_length);
 void filebuf_undo(struct FileBuf *fb);
 void filebuf_redo(struct FileBuf *fb);

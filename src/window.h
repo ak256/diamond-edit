@@ -17,6 +17,7 @@ struct Window {
 	int y;
 	int cursor_line;
 	int cursor_char;
+	int cursor_index;
 	float w; // size of window is in % of available space
 	float h;
 };
