@@ -36,7 +36,7 @@ The capitalized versions of the cursor movement commands (shift + key) enable te
 * I ... move selection left one word
 * O ... move selection right one word
 
-* f ... enter insert mode
+* f ... enter editor mode
 
 
 ### Editor Mode

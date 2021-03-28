@@ -19,8 +19,8 @@ struct PieceTableEntry {
 	struct PieceTableEntry *next;
 	index_t start;
 	index_t length;
+	index_t deletion_length;
 	int8_t buf_id;
-	bool undone;
 };
 
 struct PieceTable {
@@ -32,7 +32,6 @@ struct PieceTable {
 	uint32_t append_buf_count;
 	uint32_t append_buf_size;
 	uint32_t origin_buf_size;
-	uint32_t entries_count;
 };
 
 struct FileBuf {
@@ -42,10 +41,13 @@ struct FileBuf {
 	uint32_t history_size;
 	uint32_t history_count;
 	uint32_t history_index;
+	index_t file_index;
+	index_t file_length;
 };
 
 void filebuf_init_empty(struct FileBuf *fb, char *path);
-void filebuf_insert(struct FileBuf *fb, index_t index, char *string, int string_length);
+void filebuf_insert(struct FileBuf *fb, char c);
+void filebuf_finish_insert(struct FileBuf *fb, index_t index, char *string, int string_length);
 void filebuf_undo(struct FileBuf *fb);
 void filebuf_redo(struct FileBuf *fb);
 

@@ -9,7 +9,15 @@
 
 #include "filebuf.h"
 
-void filebuf_init_empty(struct FileBuf *fb, char *path) {
+void filebuf_init(struct FileBuf *fb) {
+	fb->history_count = 0;
+	fb->history_index = 0;
+	fb->history_size = init_buf_size;
+	fb->history = malloc(sizeof(PieceTableEntry) * fb->history_size);
+	fb->file_index = 0;
+}
+
+void filebuf_init_table(struct FileBuf *fb) {
 	const int init_buf_size = 4096 * 2; // don't go much smaller than this
 
 	struct PieceTable table;
@@ -25,22 +33,15 @@ void filebuf_init_empty(struct FileBuf *fb, char *path) {
 	first_entry.next = NULL;
 	first_entry.start = 0;
 	first_entry.length = 0;
+	first_entry.deletion_length = 0;
 	first_entry.buf_id = BUF_ID_ORIGIN;
-	first_entry.undone = false;
 	table.first_entry = first_entry;
+	table.current_entry = first_entry;
 
 	fb->table = table;
-	fb->path = path;
-
-	fb->history_count = 0;
-	fb->history_index = 0;
-	fb->history_size = init_buf_size;
-	fb->history = malloc(sizeof(PieceTableEntry) * fb->history_size);
 }
 
-static void after_new_entry(struct Filebuf *fb) {
-	fb->table.entries_count++;
-
+static void erase_redo_history(struct Filebuf *fb) {
 	// erase any redo history
 	fb->history_index++; 
 	for (int i = fb->history_index; i < fb->history_count - 1; i++) {
@@ -55,34 +56,65 @@ static void after_new_entry(struct Filebuf *fb) {
 	fb->history_count = fb->history_index;
 }
 
-void filebuf_insert(struct FileBuf *fb, char c) {
-	// TODO append to fb->append_buf
+char filebuf_char_at(struct FileBuf *fb, index_t file_index) {
+	// TODO
 }
 
-void filebuf_finish_insert(struct FileBuf *fb, index_t index, unsigned int string_length) {
+struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index) {
+	
+}
+
+void filebuf_insert(struct FileBuf *fb, char c) {
+	if (fb->append_buf_count >= fb->append_buf_size) {
+		fb->append_buf_size *= 2;
+		fb->append_buf = realloc(fb->append_buf, sizeof(char) * fb->append_buf_size);
+	}
+	fb->append_buf[fb->append_buf_count] = c;
+	fb->append_buf_count++;
+}
+
+void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_index, index_t insert_length, index_t delete_length) {
+	struct PieceTableEntry *at = filebuf_entry_at(fb, file_index);
+
+	if (delete_length > 0) {
+		// add hidden entry (only in history) for deletion, adjust length of current entry
+		at->length -= delete_length;
+		struct PieceTableEntry *deletion = &fb->history[fb->history_index];
+	}
+
 	struct PieceTableEntry *entry = &fb->history[fb->history_index];
-	entry->start = index;
-	entry->length = string_length;
+	entry->start = buf_index;
+	entry->length = insert_length;
 	entry->buf_id = BUF_ID_APPEND;
-	entry->undone = false;
-	after_new_entry(fb);
+	
+	// insert into piece table
+	struct PieceTableEntry *current = filebuf_entry_at(fb, file_index);
+
+
+	while (true) {
+		if (gT) {
+
+		}
+	}
+
+	erase_redo_history(fb);
 }
 
 void filebuf_undo(struct FileBuf *fb) {
 	if (fb->history_index == 0) return;
 	fb->history_index--;
-	fb->history[fb->history_index].undone = true;
+	// FIXME doesn't handle entries (which may be split or changed based on actions)
 }
 
 void filebuf_redo(struct FileBuf *fb) {
 	if (fb->history_index >= fb->history_count) return;
-	fb->history[fb->history_index].undone = false;
 	fb->history_index++;
+	// FIXME doesn't handle entries (which may be split or changed based on actions)
 }
 
 /* Attempts to load the entire file at the path into the buffer.
  * WARNING: will initialize filebuf, so it should NOT be initialized prior.
- * FIXME: does not handle large files well (e.g. 1GB). should have a limit and read in parts of the file at a time
+ * FIXME: reads entire file into memory (not good for large files e.g. 1GB). should have a limit and read in parts of the file at a time as needed.
  * Returns whether successful.
  */
 bool filebuf_load(struct FileBuf *filebuf, char *path) {
@@ -92,8 +124,8 @@ bool filebuf_load(struct FileBuf *filebuf, char *path) {
 
 	struct stat filestat;
 	fstat(file, &filestat);
-	filebuf->buf_size = filestat.st_size * 2;
-	filebuf->buf = malloc(sizeof(char) * filebuf->buf_size);
+	filebuf->origin_buf_size = filestat.st_size * 2;
+	filebuf->origin_buf = malloc(sizeof(char) * filebuf->origin_buf_size);
 
 	char c;
 	int i = 0;
@@ -101,7 +133,6 @@ bool filebuf_load(struct FileBuf *filebuf, char *path) {
 		filebuf->buf[i] = c;
 		i++;
 	}
-	filebuf->buf_count = i;
 	fclose(file);
 	return true;
 }
