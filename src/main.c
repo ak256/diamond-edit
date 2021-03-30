@@ -35,18 +35,13 @@ int main(int arg_count, char **args) {
 	window_init(&root);
 
 	struct Window *current = &root;
+	filebuf_init(&current.filebuf);
 	if (arg_count > 2) {
 		fprintf("Opening multiple files at once not supported yet\n");
 		exit(EXIT_FAILURE);
 	} else if (arg_count == 2) {
-		bool loaded = filebuf_load(&current.filebuf, args[1]);
-		if (!loaded) {
-			filebuf_init_table(&current.filebuf);
-			current.filebuf.path = args[1];
-		}
-	} else {
-		filebuf_init_table(&current.filebuf);
-		current.filebuf.path = NULL;
+		filebuf_load(&current.filebuf, args[1]);
+		current->filebuf.path = args[1]; // if filebuf_load fails, edit empty file with same path
 	}
 	
 	terminal_init();
@@ -79,18 +74,16 @@ int main(int arg_count, char **args) {
 					}
 				}
 				break;
-			case 'k':
+			case 'k': // FIXME
 				terminal_cursor_up(1);
 				break;
-			case 'l':
+			case 'l': // FIXME
 				terminal_cursor_right(1);
 				break;
-			case 'i':
-				// TODO
+			case 'i': // FIXME
 				terminal_cursor_right(word_len);
 				break;
-			case 'o':
-				// TODO
+			case 'o': // FIXME
 				terminal_cursor_left(word_len);
 				break;
 			case 'f': 
@@ -103,7 +96,7 @@ int main(int arg_count, char **args) {
 			}
 		} else if (mode == MODE_EDITOR) {
 			switch (c) {
-			case '\b':
+			case '\b': // backspace
 				// can't move cursor unless deleting or typing in editor mode,
 				// so we only have to worry about counting number of characters deleted via backspace
 				if (insert_length > 0) {
@@ -112,7 +105,7 @@ int main(int arg_count, char **args) {
 					delete_length++;
 				}
 				break;
-			case '':
+			case '': // escape
 				filebuf_finish_insert(fb, insert_file_index, insert_buf_index, insert_length, delete_length);
 				mode = MODE_COMMAND; 
 				break;

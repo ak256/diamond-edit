@@ -11,7 +11,7 @@ Also only written with Linux support currently.
 * Easy to open many files and navigate between them (workspace management)
 
 It will also obviously have:
-* Undo history
+* "Unlimited" undo history
 * Search and replace
 * Minimal memory usage and high performance
 
