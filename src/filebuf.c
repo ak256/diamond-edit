@@ -26,9 +26,9 @@ void filebuf_init(struct FileBuf *fb) {
 	struct PieceTable table;
 	table.origin_buf = NULL;
 	table.origin_buf_size = 0;
-	table.append_buf = malloc(sizeof(char) * INIT_BUF_SIZE);
-	table.append_buf_size = INIT_BUF_SIZE;
-	table.append_buf_count = 0;
+	table.modify_buf = malloc(sizeof(char) * INIT_BUF_SIZE);
+	table.modify_buf_size = INIT_BUF_SIZE;
+	table.modify_buf_count = 0;
 	table.entries_count = 1;
 	table.entries_size = INIT_BUF_SIZE;
 	table.entries = malloc(sizeof(struct PieceTableEntry) * table.entries_size);
@@ -41,7 +41,6 @@ void filebuf_init(struct FileBuf *fb) {
 	first_entry->deletion_length = 0;
 	first_entry->buf_id = BUF_ID_ORIGIN;
 
-	table.first_entry = first_entry;
 	table.current_entry = first_entry;
 	fb->table = table;
 }
@@ -73,14 +72,28 @@ static struct PieceTableEntry *next_entry(struct PieceTable *table) {
 	return entry;
 }
 
-/* Inserts the second entry into the linked list of entries after the first entry. */
-static inline void link_entry_after(struct PieceTableEntry *entry, struct PieceTableEntry *insert) {
-	if (entry->next != NULL) {
-		entry->next->prev = insert;
-		insert->next = entry->next;
+/* Inserts the entry (2nd arg) into the linked list of entries before the reference entry (1st arg). 
+ * Entry cannot already be in the list, call unlink_entry() first before re-inserting.
+ */
+static inline void link_entry_before(struct PieceTableEntry *ref, struct PieceTableEntry *entry) {
+	if (ref->prev != NULL) {
+		ref->prev->next = entry;
 	}
-	entry->next = insert;
-	insert->prev = entry;
+	entry->prev = ref->prev;
+	ref->prev = entry;
+	entry->next = ref;
+}
+
+/* Inserts the entry (2nd arg) into the linked list of entries after the reference entry (1st arg).
+ * Entry cannot already be in the list, call unlink_entry() first before re-inserting.
+ */
+static inline void link_entry_after(struct PieceTableEntry *ref, struct PieceTableEntry *entry) {
+	if (ref->next != NULL) {
+		ref->next->prev = entry;
+	}
+	entry->next = ref->next;
+	ref->next = entry;
+	entry->prev = ref;
 }
 
 /* Removes the entry from the linked list of entries. */
@@ -91,19 +104,29 @@ static inline void unlink_entry(struct PieceTableEntry *entry) {
 	entry->prev->next = entry->next;
 }
 
+/* Attempts to compact memory used by the file buffer, merging entries where possible and removing
+ * any redundancies and unnecessary memory usages.
+ */
+static void filebuf_defragment(struct FileBuf *fb) {
+	// TODO
+	// detect and merge consecutive modify_buf entries (originally from splitting an entry in two)
+}
+
 /* Erases all current redo history. */
 static void erase_redo_history(struct Filebuf *fb) {
-	// erase any redo history
+	if (fb->history_index >= fb->history_count) return; // nothing to erase
+
 	for (int i = fb->history_index; i < fb->history_count - 1; i++) {
 		struct PieceTableEntry *remove = &fb->history[i];
 		remove->prev->next = remove->next;
 		remove->next->prev = remove->prev;
 	}
-	if (fb->history_index < fb->history_count) {
-		struct PieceTableEntry *remove = &fb->history[fb->history_count - 1];
-		remove->prev->next = remove->next;
-	}
+	struct PieceTableEntry *remove = &fb->history[fb->history_count - 1];
+	remove->prev->next = remove->next;
 	fb->history_count = fb->history_index;
+
+	// clean up entries that may be fragmented unnecessarily due to undos
+	filebuf_defragment(fb);
 }
 
 /* Retrieves the character at the actual character index in the file. */
@@ -118,12 +141,12 @@ struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index)
 
 /* Adds a character to the FileBuf. */
 void filebuf_insert(struct FileBuf *fb, char c) {
-	if (fb->append_buf_count >= fb->append_buf_size) {
-		fb->append_buf_size *= 2;
-		fb->append_buf = realloc(fb->append_buf, sizeof(char) * fb->append_buf_size);
+	if (fb->modify_buf_count >= fb->modify_buf_size) {
+		fb->modify_buf_size *= 2;
+		fb->modify_buf = realloc(fb->modify_buf, sizeof(char) * fb->modify_buf_size);
 	}
-	fb->append_buf[fb->append_buf_count] = c;
-	fb->append_buf_count++;
+	fb->modify_buf[fb->modify_buf_count] = c;
+	fb->modify_buf_count++;
 }
 
 /* Finalizes a series of character insertions by modifying the PieceTable
@@ -131,7 +154,29 @@ void filebuf_insert(struct FileBuf *fb, char c) {
  */
 void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_index, index_t insert_length, index_t delete_length) {
 	struct FileEvent *event = next_event(fb);
-	struct PieceTableEntry *at = filebuf_entry_at(fb, file_index);
+
+	index_t relative_index;
+	struct PieceTableEntry *at = filebuf_entry_at(fb, file_index, &relative_index);
+	if (relative_index == at->start) {
+		// insert before the entry, possibly modifying the previous one.
+		// at may be NULL after this, but this is handled properly.
+		at = at->prev;
+	} else if () {
+		// inserting in middle of the entry, split it into two.
+		struct PieceTableEntry *right_entry = next_entry(&fb->table);
+		right_entry->start = relative_index;
+		right_entry->length = at->length - (relative_index - at->start);
+		right_entry->buf_id = BUF_ID_APPEND;
+		link_entry_after(at, right_entry);
+
+		// make this entry the left side of the split
+		at->length = relative_index - at->start;
+
+		// these won't be re-merged upon undo, which is fine in case of redos,
+		// but might start taking up memory since splitting entries will likely occur
+		// most of the time an insert is done. this will create unnecessary memory usage.
+		// so, this issue is handled by calling filebuf_defragment() upon erase_redo_history().
+	}
 
 	if (delete_length > 0) {
 		if (insert_length > 0) {
@@ -139,7 +184,6 @@ void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_i
 			struct PieceTableEntry *entry = next_entry(&fb->table);
 			entry->start = buf_index;
 			entry->length = insert_length;
-			entry->delete_length = delete_length;
 			entry->buf_id = BUF_ID_APPEND;
 			event->entry = entry;
 			link_entry_after(at, entry);
@@ -147,13 +191,30 @@ void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_i
 			event->id = FILE_EVENT_DELETE;
 			event->entry = at;
 		}
+		event->data = delete_length;
 		at->length -= delete_length;
+
+		if (at->length == 0) {
+			// delete this entry. but how to undo this as well, if entry memory overwritten?
+			// FIXME
+		} else if (at->length < 0) {
+			// deleting into the next left entry!
+			// FIXME
+		}
 	} else if (at->buf_id == BUF_ID_APPEND) {
 		event->id = FILE_EVENT_APPEND;
 		event->entry = at;
+		event->data = insert_length;
 		at->length += insert_length;
 	} else {
-		// TODO
+		event->id = FILE_EVENT_ADD;
+		event->data = insert_length;
+		struct PieceTableEntry *entry = next_entry(&fb->table);
+		entry->start = buf_index;
+		entry->length = insert_length;
+		entry->buf_id = BUF_ID_APPEND;
+		event->entry = entry;
+		link_entry_after(at, entry);
 	}
 
 	erase_redo_history(fb);
@@ -166,14 +227,20 @@ void filebuf_undo(struct FileBuf *fb) {
 
 	struct FileEvent *undone_event = &fb->history[fb->history_index];
 	switch (undone_event->id) {
-	case FILE_EVENT_DELETE_THEN_APPEND:
+	case FILE_EVENT_DELETE_THEN_ADD:
+		// FIXME see above related fixme's
 		unlink_entry(undone_event->entry);
-		// fall through to FILE_EVENT_DELETE
+		undone_event->entry->prev->length += undone_event->data;
+		break;
 	case FILE_EVENT_DELETE:
-		undone_event->entry->prev->length += undone_event->entry->delete_length;
+		// FIXME see above related fixme's
+		undone_event->entry->prev->length += undone_event->data;
+		break;
+	case FILE_EVENT_ADD:
+		// TODO
 		break;
 	case FILE_EVENT_APPEND:
-		unlink_entry(undone_event->entry);
+		undone_event->entry->length -= undone_event->data;
 		break;
 	}
 }
@@ -182,7 +249,7 @@ void filebuf_undo(struct FileBuf *fb) {
 void filebuf_redo(struct FileBuf *fb) {
 	if (fb->history_index >= fb->history_count) return;
 	fb->history_index++;
-	// FIXME doesn't handle entries (which may be split or changed based on actions)
+	// FIXME doesn't FileEvents
 }
 
 /* Attempts to load the entire file at the path into the buffer.

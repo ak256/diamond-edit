@@ -11,12 +11,12 @@
 typedef uint32_t index_t;
 
 #define BUF_ID_ORIGIN 0
-#define BUF_ID_APPEND 1
-#define BUF_ID_DELETE 2
+#define BUF_ID_MODIFY 1
 
 enum file_event_ids {
 	FILE_EVENT_DELETE,
-	FILE_EVENT_DELETE_THEN_APPEND,
+	FILE_EVENT_DELETE_THEN_ADD,
+	FILE_EVENT_ADD,
 	FILE_EVENT_APPEND;
 };
 
@@ -25,22 +25,18 @@ struct PieceTableEntry {
 	struct PieceTableEntry *next;
 	index_t start;
 	index_t length;
-	index_t deletion_length;
 	int8_t buf_id;
-	HistoryEvent event;
 };
 
 struct PieceTable {
-	// keep origin before append buf. see 'start' field of PieceTableRow
 	char *origin_buf;
-	char *append_buf;
-	struct PieceTableEntry *first_entry; // entries are linked together
+	char *modify_buf;
 	struct PieceTableEntry *current_entry; // most recently used entry for fast access
-	struct PieceTableEntry *entries; // memory for each entry
+	struct PieceTableEntry *entries; // memory for each entry. not guaranteed to be in any order
 	uint32_t entries_count;
 	uint32_t entries_size;
-	uint32_t append_buf_count;
-	uint32_t append_buf_size;
+	uint32_t modify_buf_count;
+	uint32_t modify_buf_size;
 	uint32_t origin_buf_size;
 };
 
@@ -48,6 +44,7 @@ struct PieceTable {
 struct FileEvent {
 	struct PieceTableEntry *entry; // entry modified or created during event
 	int id; // see file_event_ids enum
+	index_t data; // related info to event, such as length of deleted text
 };
 
 struct FileBuf {

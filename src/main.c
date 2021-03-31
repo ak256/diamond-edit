@@ -89,7 +89,7 @@ int main(int arg_count, char **args) {
 			case 'f': 
 				mode = MODE_EDITOR;
 				insert_file_index = fb->file_index;
-				insert_buf_index = fb->table.append_buf_count;
+				insert_buf_index = fb->table.modify_buf_count;
 				insert_length = 0;
 				delete_length = 0;
 				break;
@@ -101,7 +101,7 @@ int main(int arg_count, char **args) {
 				// so we only have to worry about counting number of characters deleted via backspace
 				if (insert_length > 0) {
 					insert_length--;
-				} else {
+				} else if (insert_file_index > 0) {
 					delete_length++;
 				}
 				break;
