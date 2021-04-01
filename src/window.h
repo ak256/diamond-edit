@@ -5,7 +5,7 @@
 #ifndef __WINDOW_H__
 #define __WINDOW_H__
 
-#include "io.h"
+#include "filebuf.h"
 
 struct Window {
 	struct Window *above; // nearby window

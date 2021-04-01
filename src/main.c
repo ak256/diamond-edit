@@ -14,7 +14,7 @@
 enum editor_modes {
 	MODE_COMMAND,
 	MODE_EDITOR
-}
+};
 
 // current editor mode
 static int mode = MODE_COMMAND;
@@ -35,12 +35,12 @@ int main(int arg_count, char **args) {
 	window_init(&root);
 
 	struct Window *current = &root;
-	filebuf_init(&current.filebuf);
+	filebuf_init(&current->filebuf);
 	if (arg_count > 2) {
-		fprintf("Opening multiple files at once not supported yet\n");
+		fprintf(stderr, "Opening multiple files at once not supported yet\n");
 		exit(EXIT_FAILURE);
 	} else if (arg_count == 2) {
-		filebuf_load(&current.filebuf, args[1]);
+		filebuf_load(&current->filebuf, args[1]);
 		current->filebuf.path = args[1]; // if filebuf_load fails, edit empty file with same path
 	}
 	
@@ -55,7 +55,7 @@ int main(int arg_count, char **args) {
 	bool selecting = false;
 	char c;
 	while ((c = getchar()) != EOF) {
-		struct FileBuf *fb = &current->fb; // alias
+		struct FileBuf *fb = &current->filebuf; // alias
 
 		if (mode == MODE_COMMAND) {
 			switch (c) {
@@ -66,8 +66,8 @@ int main(int arg_count, char **args) {
 				}
 				break;
 			case 'j':
-				for (int i = fb->file_index; i < fb->file_length; i++) {
-					if (filebuf_char_at(i) == '\n') {
+				for (index_t i = fb->file_index; i < fb->file_length; i++) {
+					if (filebuf_char_at(fb, i) == '\n') {
 						terminal_cursor_down(1);
 						fb->file_index = i;
 						break;
@@ -81,10 +81,10 @@ int main(int arg_count, char **args) {
 				terminal_cursor_right(1);
 				break;
 			case 'i': // FIXME
-				terminal_cursor_right(word_len);
+				// terminal_cursor_right(word_len);
 				break;
 			case 'o': // FIXME
-				terminal_cursor_left(word_len);
+				// terminal_cursor_left(word_len);
 				break;
 			case 'f': 
 				mode = MODE_EDITOR;
