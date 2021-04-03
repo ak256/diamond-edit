@@ -8,6 +8,7 @@
 #include <signal.h>
 
 #include "window.h"
+#include "draw.h"
 #include "terminal.h"
 #include "filebuf.h"
 
@@ -95,6 +96,10 @@ int main(int arg_count, char **args) {
 				break;
 			}
 		} else if (mode == MODE_EDITOR) {
+			index_t entry_index;
+			struct PieceTableEntry *entry = filebuf_entry_at(fb, insert_file_index - delete_length, &entry_index);
+			bool redraw = true;
+
 			switch (c) {
 			case '\b': // backspace
 				// can't move cursor unless deleting or typing in editor mode,
@@ -103,16 +108,23 @@ int main(int arg_count, char **args) {
 					insert_length--;
 				} else if (insert_file_index > 0) {
 					delete_length++;
+				} else {
+					redraw = false;
 				}
 				break;
 			case '': // escape
 				filebuf_finish_insert(fb, insert_file_index, insert_buf_index, insert_length, delete_length);
 				mode = MODE_COMMAND; 
+				redraw = false;
 				break;
 			default: 
 				filebuf_insert(fb, c);
 				insert_length++;
 				break;
+			}
+			if (redraw) {
+			 	// FIXME need to update char/line of window when moving cursor
+				draw_chars(entry, current->cursor_line, current->cursor_char, insert_length);
 			}
 		}
 	}

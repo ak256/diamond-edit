@@ -1,5 +1,7 @@
 /* filebuf.c
- * Stores and manages file text being edited.
+ * Memory for a single file being edited (file buffer).
+ * Uses a Piece Table data structure to store edits (a quick overview: https://www.averylaird.com/programming/the%20text%20editor/2017/09/30/the-piece-table/).
+ *
  * author: Andrew Klinge
  */
 
@@ -10,6 +12,17 @@
 #include "filebuf.h"
 
 #define INIT_BUF_SIZE 8192 // don't go much smaller than this
+
+static struct FileEvent *next_event(struct FileBuf *fb);
+static struct PieceTableEntry *next_entry(struct PieceTable *table);
+
+static void delete_entry(struct PieceTable *table, struct PieceTableEntry *entry);
+static void filebuf_defragment(struct FileBuf *fb);
+static void erase_redo_history(struct FileBuf *fb);
+
+static inline void link_entry_before(struct PieceTableEntry *ref, struct PieceTableEntry *entry);
+static inline void link_entry_after(struct PieceTableEntry *ref, struct PieceTableEntry *entry);
+static inline void unlink_entry(struct PieceTableEntry *entry);
 
 /* Initializes the file buffer to empty. 
  * Should be called before using a new file buffer elsewhere.
@@ -33,7 +46,7 @@ void filebuf_init(struct FileBuf *fb) {
 	table.entries_size = INIT_BUF_SIZE;
 	table.entries = malloc(sizeof(struct PieceTableEntry) * table.entries_size);
 
-	struct PieceTableEntry *first_entry = &table.entries[0];
+	struct PieceTableEntry *first_entry = next_entry(&table);
 	first_entry->prev = NULL;
 	first_entry->next = NULL;
 	first_entry->start = 0;
@@ -41,7 +54,7 @@ void filebuf_init(struct FileBuf *fb) {
 	first_entry->buf_id = BUF_ID_ORIGIN;
 
 	table.free_entries = NULL;
-	table.current_entry = first_entry;
+	table.first_entry = first_entry;
 	fb->table = table;
 }
 
@@ -147,19 +160,19 @@ static void erase_redo_history(struct FileBuf *fb) {
 	filebuf_defragment(fb);
 }
 
-/* Retrieves the character at the actual character index in the file. */
-char filebuf_char_at(struct FileBuf *fb, index_t file_index) {
-	// TODO
-	return 0;
-}
-
-/* Retrieves the piece table entry at the given actual character index in the file. 
+/* Retrieves the piece table entry at the given actual character index in the file.
  *
  * relative_index - this function stores the relative index within the entry that the file index corresponds with
  */
 struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index, index_t *relative_index) {
-	// TODO
-	return NULL;
+	struct PieceTableEntry *at = fb->table.first_entry;
+	index_t i = 0;
+	while (at != NULL && i < file_index) {
+		i += at->length;
+		at = at->next;
+	}
+	*relative_index = i - file_index;
+	return at;
 }
 
 /* Adds a character to the FileBuf. */
@@ -289,13 +302,22 @@ bool filebuf_load(struct FileBuf *fb, char *path) {
 	fstat(fileno(file), &filestat);
 	fb->table.origin_buf_size = filestat.st_size * 2;
 	fb->table.origin_buf = malloc(sizeof(char) * fb->table.origin_buf_size);
-
 	char c;
 	int i = 0;
 	while ((c = getchar()) != EOF) {
 		fb->table.origin_buf[i] = c;
 		i++;
 	}
+
+	struct PieceTableEntry *first_entry = next_entry(&fb->table);
+	first_entry->prev = NULL;
+	first_entry->next = NULL;
+	first_entry->start = 0;
+	first_entry->length = i;
+	first_entry->buf_id = BUF_ID_ORIGIN;
+
+	fb->table.free_entries = NULL;
+	fb->table.first_entry = first_entry;
 	fclose(file);
 	return true;
 }
