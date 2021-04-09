@@ -11,10 +11,11 @@ void window_init(struct Window *window) {
 	window->below = NULL;
 	window->left = NULL;
 	window->right = NULL;
-	window->x = 0;
-	window->y = 0;
+	window->file_index = 0;
 	window->cursor_line = 0;
 	window->cursor_char = 0;
+	window->x = 0;
+	window->y = 0;
 	window->w = 1.0f;
 	window->h = 1.0f;
 }

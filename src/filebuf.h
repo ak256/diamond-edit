@@ -33,8 +33,8 @@ struct PieceTableEntry {
 };
 
 struct PieceTable {
-	char *origin_buf;
-	char *modify_buf;
+	char *origin_buf; // leave before modify_buf at index 0 when treating PieceTable as char**,
+	char *modify_buf; // for quick access
 	struct PieceTableEntry *first_entry; // entry at the top of the table
 	struct PieceTableEntry *entries; // memory for each entry. not guaranteed to be in any order
 	struct PieceTableEntry *free_entries; // pointer to head of linked list of memory in entries that has been marked freed
@@ -60,17 +60,15 @@ struct FileBuf {
 	uint32_t history_size;
 	uint32_t history_count;
 	uint32_t history_index; // where to modify history
-	index_t file_index; // marker for current exact char index in file
-	index_t file_length; // number of characters
+	index_t length; // file length in chars
 };
 
 void filebuf_init(struct FileBuf *fb);
 void filebuf_undo(struct FileBuf *fb);
 void filebuf_redo(struct FileBuf *fb);
-void filebuf_insert(struct FileBuf *fb, char c);
-void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_index, index_t insert_length, index_t delete_length);
+void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_index, index_t insert_length, index_t delete_before_length, index_t delete_after_length);
 
-struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index, index_t *relative_index);
+char *filebuf_get_buffer(struct FileBuf *fb, struct PieceTableEntry *entry);
 
 bool filebuf_write(struct FileBuf *buf);
 bool filebuf_load(struct FileBuf *buf, char *path);

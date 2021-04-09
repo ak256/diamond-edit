@@ -6,9 +6,9 @@
 #ifndef __DRAW_H__
 #define __DRAW_H__
 
+#include "window.h"
 #include "filebuf.h"
 
-void draw_chars(struct PieceTableEntry *entry, int line, int character, index_t n);
-void draw_line(struct Window *window, index_t i);
+void draw_chars(struct Window *window, struct PieceTableEntry *entry, index_t entry_index, index_t length);
 
 #endif

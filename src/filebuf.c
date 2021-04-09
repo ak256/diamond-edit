@@ -32,8 +32,6 @@ void filebuf_init(struct FileBuf *fb) {
 	fb->history_index = 0;
 	fb->history_size = INIT_BUF_SIZE;
 	fb->history = malloc(sizeof(struct FileEvent) * fb->history_size);
-	fb->file_index = 0;
-	fb->file_length = 0;
 	fb->path = NULL;
 
 	struct PieceTable table;
@@ -167,33 +165,41 @@ static void erase_redo_history(struct FileBuf *fb) {
 struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index, index_t *relative_index) {
 	struct PieceTableEntry *at = fb->table.first_entry;
 	index_t i = 0;
-	while (at != NULL && i < file_index) {
+	while (i < file_index) {
 		i += at->length;
+		if (at->next == NULL) break;
+
 		at = at->next;
 	}
 	*relative_index = i - file_index;
 	return at;
 }
 
-/* Adds a character to the FileBuf. */
-void filebuf_insert(struct FileBuf *fb, char c) {
+/* Modifies the piece table by inserting a new entry (or by modifying existing ones).
+ *
+ * inserted_text - a buffer containing the text to be inserted into the file at insert_index
+ * insert_index - index in the file where the user began editing
+ * insert_length - number of characters in inserted_text. may be zero if delete-indices are non-zero
+ * delete_before_length - number of characters before the insert_index that were deleted (via backspace)
+ * delete_after_length - number of characters after the insert_index that were deleted (via delete)
+ */
+void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_index, index_t insert_length, index_t delete_before_length, index_t delete_after_length) {
+	// add text to modify_buf
 	struct PieceTable *table = &fb->table; // alias
+	const index_t insert_buf_index = table->modify_buf_count;
+	table->modify_buf_count += insert_length;
 	if (table->modify_buf_count >= table->modify_buf_size) {
-		table->modify_buf_size *= 2;
+		table->modify_buf_size = table->modify_buf_count * 2;
 		table->modify_buf = realloc(table->modify_buf, sizeof(char) * table->modify_buf_size);
 	}
-	table->modify_buf[table->modify_buf_count] = c;
-	table->modify_buf_count++;
-}
+	for (index_t i = 0; i < insert_length; i++) {
+		table->modify_buf[insert_buf_index + i] = inserted_text[i];
+	}
 
-/* Finalizes a series of character insertions by modifying the PieceTable
- * of the FileBuf.
- */
-void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_index, index_t insert_length, index_t delete_length) {
+	// add change to piece table
 	struct FileEvent *event = next_event(fb);
-
 	index_t relative_index;
-	struct PieceTableEntry *at = filebuf_entry_at(fb, file_index, &relative_index);
+	struct PieceTableEntry *at = filebuf_entry_at(fb, insert_index, &relative_index);
 	if (relative_index == at->start) {
 		// insert before the entry, possibly modifying the previous one.
 		// at may be NULL after this, but this is handled properly.
@@ -215,11 +221,11 @@ void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_i
 		// so, this issue is handled by calling filebuf_defragment() upon erase_redo_history().
 	}
 
-	if (delete_length > 0) {
+	if (delete_before_length > 0 || delete_after_length > 0) {
 		if (insert_length > 0) {
 			event->id = FILE_EVENT_DELETE_THEN_ADD;
 			struct PieceTableEntry *entry = next_entry(&fb->table);
-			entry->start = buf_index;
+			entry->start = insert_buf_index;
 			entry->length = insert_length;
 			entry->buf_id = BUF_ID_MODIFY;
 			event->entry = entry;
@@ -228,7 +234,7 @@ void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_i
 			event->id = FILE_EVENT_DELETE;
 			event->entry = at;
 		}
-		event->data = delete_length;
+		event->data = delete_length; // FIXME must track both before/after delete lengths
 		at->length -= delete_length;
 
 		if (at->length == 0) {
@@ -247,13 +253,14 @@ void filebuf_finish_insert(struct FileBuf *fb, index_t file_index, index_t buf_i
 		event->id = FILE_EVENT_ADD;
 		event->data = insert_length;
 		struct PieceTableEntry *entry = next_entry(&fb->table);
-		entry->start = buf_index;
+		entry->start = insert_buf_index;
 		entry->length = insert_length;
 		entry->buf_id = BUF_ID_MODIFY;
 		event->entry = entry;
 		link_entry_after(at, entry);
 	}
 
+	fb->length = fb->length - (delete_before_length + delete_after_length) + insert_length;
 	erase_redo_history(fb);
 }
 
@@ -280,6 +287,8 @@ void filebuf_undo(struct FileBuf *fb) {
 		undone_event->entry->length -= undone_event->data;
 		break;
 	}
+
+	// TODO update fb->length
 }
 
 /* Redoes the last undone performed action on the file. */
@@ -287,6 +296,18 @@ void filebuf_redo(struct FileBuf *fb) {
 	if (fb->history_index >= fb->history_count) return;
 	fb->history_index++;
 	// FIXME doesn't FileEvents
+	// TODO update fb->length
+}
+
+/* Returns the character buffer that the given entry uses. */
+char *filebuf_get_buffer(struct FileBuf *fb, struct PieceTableEntry *entry) {
+	switch (entry->buf_id) {
+	case BUF_ID_ORIGIN: return fb->table.origin_buf;
+	case BUF_ID_MODIFY: return fb->table.modify_buf;
+	default:
+		fprintf(stderr, "char buffer ID %i is invalid!\n", entry->buf_id);
+		exit(EXIT_FAILURE);
+	}
 }
 
 /* Attempts to load the entire file at the path into the buffer.
@@ -303,19 +324,20 @@ bool filebuf_load(struct FileBuf *fb, char *path) {
 	fb->table.origin_buf_size = filestat.st_size * 2;
 	fb->table.origin_buf = malloc(sizeof(char) * fb->table.origin_buf_size);
 	char c;
-	int i = 0;
+	int count = 0;
 	while ((c = getchar()) != EOF) {
-		fb->table.origin_buf[i] = c;
-		i++;
+		fb->table.origin_buf[count] = c;
+		count++;
 	}
 
 	struct PieceTableEntry *first_entry = next_entry(&fb->table);
 	first_entry->prev = NULL;
 	first_entry->next = NULL;
 	first_entry->start = 0;
-	first_entry->length = i;
+	first_entry->length = count;
 	first_entry->buf_id = BUF_ID_ORIGIN;
 
+	fb->length = count;
 	fb->table.free_entries = NULL;
 	fb->table.first_entry = first_entry;
 	fclose(file);
