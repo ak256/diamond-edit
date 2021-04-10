@@ -8,8 +8,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 #include "filebuf.h"
+#include "config.h"
 
 #define INIT_BUF_SIZE 8192 // don't go much smaller than this
 
@@ -50,6 +52,7 @@ void filebuf_init(struct FileBuf *fb) {
 	first_entry->start = 0;
 	first_entry->length = 0;
 	first_entry->buf_id = BUF_ID_ORIGIN;
+	first_entry->saved_to_file = true;
 
 	table.free_entries = NULL;
 	table.first_entry = first_entry;
@@ -196,8 +199,14 @@ void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_inde
 		table->modify_buf[insert_buf_index + i] = inserted_text[i];
 	}
 
-	// add change to piece table
+	// add change to history
 	struct FileEvent *event = next_event(fb);
+	event->insert_length = insert_length;
+	event->delete_before_length = delete_before_length;
+	event->delete_after_length = delete_after_length;
+	event->entry = NULL;
+
+	// add change to piece table
 	index_t relative_index;
 	struct PieceTableEntry *at = filebuf_entry_at(fb, insert_index, &relative_index);
 	if (relative_index == at->start) {
@@ -210,6 +219,7 @@ void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_inde
 		right_entry->start = relative_index;
 		right_entry->length = at->length - (relative_index - at->start);
 		right_entry->buf_id = BUF_ID_MODIFY;
+		right_entry->saved_to_file = false;
 		link_entry_after(at, right_entry);
 
 		// make this entry the left side of the split
@@ -221,6 +231,7 @@ void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_inde
 		// so, this issue is handled by calling filebuf_defragment() upon erase_redo_history().
 	}
 
+	// FIXME @@@ HERE @@@ // make sure to update entry->saved_to_file
 	if (delete_before_length > 0 || delete_after_length > 0) {
 		if (insert_length > 0) {
 			event->id = FILE_EVENT_DELETE_THEN_ADD;
@@ -228,13 +239,13 @@ void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_inde
 			entry->start = insert_buf_index;
 			entry->length = insert_length;
 			entry->buf_id = BUF_ID_MODIFY;
+			entry->saved_to_file = false;
 			event->entry = entry;
 			link_entry_after(at, entry);
 		} else {
 			event->id = FILE_EVENT_DELETE;
 			event->entry = at;
 		}
-		event->data = delete_length; // FIXME must track both before/after delete lengths
 		at->length -= delete_length;
 
 		if (at->length == 0) {
@@ -256,6 +267,7 @@ void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_inde
 		entry->start = insert_buf_index;
 		entry->length = insert_length;
 		entry->buf_id = BUF_ID_MODIFY;
+		entry->saved_to_file = false;
 		event->entry = entry;
 		link_entry_after(at, entry);
 	}
@@ -289,14 +301,15 @@ void filebuf_undo(struct FileBuf *fb) {
 	}
 
 	// TODO update fb->length
+	// TODO update entry->saved_to_file
 }
 
 /* Redoes the last undone performed action on the file. */
 void filebuf_redo(struct FileBuf *fb) {
 	if (fb->history_index >= fb->history_count) return;
 	fb->history_index++;
-	// FIXME doesn't FileEvents
 	// TODO update fb->length
+	// TODO update entry->saved_to_file
 }
 
 /* Returns the character buffer that the given entry uses. */
@@ -310,11 +323,63 @@ char *filebuf_get_buffer(struct FileBuf *fb, struct PieceTableEntry *entry) {
 	}
 }
 
+/* Returns a pointer to the beginning of the entry's text in the file.
+ * WARNING: entry texts are NOT separated by null terms! You must bound the text by the entry's length!
+ */
+char *filebuf_get_text(struct FileBuf *fb, struct PieceTableEntry *entry) {
+	char *buf = filebuf_get_buffer(fb, entry);
+	return buf + entry->start;
+}
+
+/* fseek() from <stdio.h> but with index_t offset instead of long offset. 
+ * reference - must be either SEEK_CUR or SEEK_END
+ */
+static inline void fseeku(FILE *stream, index_t offset, int reference) {
+	#if ARCH_BITS == 32
+		if (offset > LONG_MAX) {
+			fseek(stream, LONG_MAX, reference);
+			fseek(stream, (long) (offset - LONG_MAX), reference);
+		} else {
+			fseek(stream, (long) offset, reference);
+		}
+	#elif ARCH_BITS == 64
+		fseek(stream, offset, reference);
+	#else
+		#error ARCH_BITS bit architecture is not supported!
+	#endif
+}
+
+/* Attempts to write the buffer to file at the filebuf's path.
+ * Returns whether successful.
+ */
+bool filebuf_write(struct FileBuf *fb) {
+	FILE *file = fopen(path, "r+"); // update file rather than rewriting it entirely on every save
+	if (file == NULL) {
+		file = fopen(path, "w"); // file doesn't exist? try just writing to it
+		if (file == NULL) return false;
+	}
+	
+	struct PieceTableEntry *at = fb->table.first_entry;
+	while (at != NULL) {
+		if (!at->saved_to_file) {
+			char *text = filebuf_get_text(fb, at);
+			for (index_t i = 0; i < at->length; i++) {
+				fputc(text[i], file);
+			}
+			at->saved_to_file = true;
+		}
+		fseeku(file, at->length, SEEK_CUR);
+		at = at->next;
+	}
+	fclose(file);
+	return true;
+}
+
 /* Attempts to load the entire file at the path into the buffer.
  * FIXME: reads entire file into memory (not good for large files e.g. 1GB). should have a limit and read in parts of the file at a time as needed.
  * Returns whether successful.
  */
-bool filebuf_load(struct FileBuf *fb, char *path) {
+bool filebuf_read(struct FileBuf *fb, char *path) {
 	FILE *file = fopen(path, "r");
 	if (file == NULL) return false;
 	fb->path = path;
@@ -336,6 +401,7 @@ bool filebuf_load(struct FileBuf *fb, char *path) {
 	first_entry->start = 0;
 	first_entry->length = count;
 	first_entry->buf_id = BUF_ID_ORIGIN;
+	first_entry->saved_to_file = true;
 
 	fb->length = count;
 	fb->table.free_entries = NULL;

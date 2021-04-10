@@ -21,6 +21,7 @@ This editor has two modes of operation: Command and Editor.
 
 ### Command Mode
 
+* f ... enter editor mode
 * h ... move cursor left one character 
 * j ... move cursor down one line
 * k ... move cursor up one line
@@ -35,9 +36,6 @@ The capitalized versions of the cursor movement commands (shift + key) enable te
 * L ... move selection end right one character
 * I ... move selection left one word
 * O ... move selection right one word
-
-* f ... enter editor mode
-
 
 ### Editor Mode
 

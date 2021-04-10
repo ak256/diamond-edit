@@ -14,8 +14,8 @@
 
 typedef uint32_t index_t;
 
-#define BUF_ID_ORIGIN 0
-#define BUF_ID_MODIFY 1
+#define BUF_ID_ORIGIN false
+#define BUF_ID_MODIFY true
 
 enum file_event_ids {
 	FILE_EVENT_DELETE,
@@ -29,12 +29,13 @@ struct PieceTableEntry {
 	struct PieceTableEntry *next; // following entry in table (closer to end of file)
 	index_t start; // starting index in respective buffer identified by buf_id
 	index_t length; // length in characters
-	int8_t buf_id; // see definitions BUF_ID_*
+	bool buf_id; // see definitions BUF_ID_*
+	bool saved_to_file; // whether this entry was written to file. used to avoid rewriting already saved data
 };
 
 struct PieceTable {
-	char *origin_buf; // leave before modify_buf at index 0 when treating PieceTable as char**,
-	char *modify_buf; // for quick access
+	char *origin_buf;
+	char *modify_buf;
 	struct PieceTableEntry *first_entry; // entry at the top of the table
 	struct PieceTableEntry *entries; // memory for each entry. not guaranteed to be in any order
 	struct PieceTableEntry *free_entries; // pointer to head of linked list of memory in entries that has been marked freed
@@ -49,7 +50,9 @@ struct PieceTable {
 struct FileEvent {
 	struct PieceTableEntry *entry; // entry modified or created during event
 	int id; // see file_event_ids enum
-	index_t data; // related info to event, such as length of deleted text
+	index_t insert_length;
+	index_t delete_before_length;
+	index_t delete_after_length;
 };
 
 // a file buffer for editing a single file
@@ -69,8 +72,9 @@ void filebuf_redo(struct FileBuf *fb);
 void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_index, index_t insert_length, index_t delete_before_length, index_t delete_after_length);
 
 char *filebuf_get_buffer(struct FileBuf *fb, struct PieceTableEntry *entry);
+char *filebuf_get_text(struct FileBuf *fb, struct PieceTableEntry *entry);
 
 bool filebuf_write(struct FileBuf *buf);
-bool filebuf_load(struct FileBuf *buf, char *path);
+bool filebuf_read(struct FileBuf *buf, char *path);
 
 #endif
