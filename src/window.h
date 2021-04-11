@@ -14,12 +14,12 @@ struct Window {
 	struct Window *right;
 	struct FileBuf filebuf;
 	index_t file_index; // current position in file
-	int cursor_line; // cursor x within terminal
-	int cursor_char; // cursor y within terminal 
-	int x; // position in terminal
-	int y;
-	float w; // size of window in % of available space
-	float h;
+	uint32_t cursor_line; // cursor x within terminal
+	uint32_t cursor_char; // cursor y within terminal 
+	uint32_t x; // position in terminal
+	uint32_t y;
+	uint32_t width; // number of columns 
+	uint32_t height; // number of lines
 };
 
 void window_init(struct Window *window);

@@ -5,15 +5,20 @@
 #ifndef __TERMINAL_H__
 #define __TERMINAL_H__
 
+#include <stdint.h>
+
 void terminal_init();
 void terminal_clear();
+void terminal_clear_line();
 void terminal_cursor_home();
-void terminal_cursor_set(int line, int column);
-void terminal_cursor_set_line(int line);
-void terminal_cursor_set_column(int column);
-void terminal_cursor_up(int n);
-void terminal_cursor_down(int n);
-void terminal_cursor_right(int n);
-void terminal_cursor_left(int n);
+void terminal_cursor_set(uint32_t line, uint32_t column);
+void terminal_cursor_set_line(uint32_t line);
+void terminal_cursor_set_column(uint32_t column);
+void terminal_cursor_up(uint32_t n);
+void terminal_cursor_down(uint32_t n);
+void terminal_cursor_right(uint32_t n);
+void terminal_cursor_left(uint32_t n);
+
+bool terminal_get_size(uint32_t *cols, uint32_t *rows);
 
 #endif

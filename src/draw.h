@@ -9,6 +9,11 @@
 #include "window.h"
 #include "filebuf.h"
 
-void draw_chars(struct Window *window, struct PieceTableEntry *entry, index_t entry_index, index_t length);
+void draw_char(char c);
+void draw_chars(struct Window *window, index_t file_index, index_t length);
+void draw_line(struct Window *window, index_t file_index);
+void draw_cursor_position(struct Window *window);
+
+void draw_set_char_color(int color);
 
 #endif

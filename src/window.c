@@ -12,12 +12,12 @@ void window_init(struct Window *window) {
 	window->left = NULL;
 	window->right = NULL;
 	window->file_index = 0;
-	window->cursor_line = 0;
-	window->cursor_char = 0;
+	window->cursor_line = 1;
+	window->cursor_char = 1;
 	window->x = 0;
 	window->y = 0;
-	window->w = 1.0f;
-	window->h = 1.0f;
+	window->width = 0;
+	window->height = 0;
 }
 
 /* Splits the window evenly and adds a new window below the current window.
@@ -34,6 +34,8 @@ void window_split_horizontally(struct Window *window, struct Window *new_window)
 	new_window->left = window->left;
 	window->below = new_window;
 
+	// FIXME using int width/height of window
+	/*
 	float h = window->h / (window->h + 1);
 	new_window->h = h;
 
@@ -47,4 +49,5 @@ void window_split_horizontally(struct Window *window, struct Window *new_window)
 		below->h = h;
 		below = below->below;
 	}
+	*/
 }

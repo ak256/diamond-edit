@@ -21,39 +21,43 @@ void terminal_init() {
 }
 
 void terminal_clear() {
-	printf("[J");
+	printf("\033[2J");
+}
+
+void terminal_clear_line() {
+	printf("\033[2K");
 }
 
 void terminal_cursor_home() {
-	printf("[H");
+	printf("\033[H");
 }
 
-void terminal_cursor_set(int line, int column) {
-	printf("[%i;%iH", line, column);
+void terminal_cursor_set(uint32_t line, uint32_t column) {
+	printf("\033[%u;%uH", line, column);
 }
 
-void terminal_cursor_set_line(int line) {
-	printf("[%i;0H", line);
+void terminal_cursor_set_line(uint32_t line) {
+	printf("\033[%u;0H", line);
 }
 
-void terminal_cursor_set_column(int column) {
-	printf("[%iG", column);
+void terminal_cursor_set_column(uint32_t column) {
+	printf("\033[%uG", column);
 }
 
-void terminal_cursor_up(int n) {
-	printf("[%iA", n);
+void terminal_cursor_up(uint32_t n) {
+	printf("\033[%uA", n);
 }
 
-void terminal_cursor_down(int n) {
-	printf("[%iB", n);
+void terminal_cursor_down(uint32_t n) {
+	printf("\033[%uB", n);
 }
 
-void terminal_cursor_right(int n) {
-	printf("[%iC", n);
+void terminal_cursor_right(uint32_t n) {
+	printf("\033[%uC", n);
 }
 
-void terminal_cursor_left(int n) {
-	printf("[%iD", n);
+void terminal_cursor_left(uint32_t n) {
+	printf("\033[%uD", n);
 }
 
 /* Attempts to get the current window size.
@@ -61,7 +65,7 @@ void terminal_cursor_left(int n) {
  *
  * Modified from: VIM - Vi IMproved by Bram Moolenaar
  */
-bool terminal_get_size(int *cols, int *rows) {
+bool terminal_get_size(uint32_t *cols, uint32_t *rows) {
 	// using ioctl
 	// Try using TIOCGWINSZ first, some systems that have it also define
 	// TIOCGSIZE but don't have a struct ttysize.

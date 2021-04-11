@@ -34,6 +34,7 @@ static void interrupt_handler(int sig) {
 int main(int arg_count, char **args) {
 	struct Window root;
 	window_init(&root);
+	terminal_get_size(&root.width, &root.height);
 
 	struct Window *current = &root;
 	filebuf_init(&current->filebuf);
@@ -41,11 +42,12 @@ int main(int arg_count, char **args) {
 		fprintf(stderr, "Opening multiple files at once not supported yet\n");
 		exit(EXIT_FAILURE);
 	} else if (arg_count == 2) {
-		filebuf_load(&current->filebuf, args[1]);
-		current->filebuf.path = args[1]; // if filebuf_load fails, edit empty file with same path
+		filebuf_read(&current->filebuf, args[1]);
+		current->filebuf.path = args[1];
 	}
 	
 	terminal_init();
+	terminal_clear();
 	terminal_cursor_home();
 	signal(SIGINT, &interrupt_handler);
 
@@ -53,8 +55,8 @@ int main(int arg_count, char **args) {
 	bool selecting = false;
 	const int buf_insert_text_size = 8192;
 	char buf_insert_text[buf_insert_text_size]; // for typed-in characters. do NOT use when pasting text
-	index_t insert_file_index;
 	index_t insert_length; // also count for buf_insert_text
+	index_t insert_file_index;
 	index_t delete_before_length;
 	index_t delete_after_length;
 	while ((c = getchar()) != EOF) {
@@ -62,28 +64,43 @@ int main(int arg_count, char **args) {
 
 		if (mode == MODE_COMMAND) {
 			switch (c) {
-			case 'h':
+			// FIXME cursor movement is very buggy and cursor counter doesn't work properly either
+			case 'h': // cursor left
+				// FIXME don't 'go left' if at beginning of line
 				if (current->file_index > 0) {
 					terminal_cursor_left(1);
+					current->cursor_char--;
 					current->file_index--;
 				}
 				break;
-			case 'j':
-				/*for (index_t i = current->file_index; i < fb->file_length; i++) {
-					// FIXME
-					if (filebuf_char_at(fb, i) == '\n') {
-						terminal_cursor_down(1);
-						current->file_index = i;
-						break;
-					}
-				}*/
-				break;
-			case 'k': // FIXME
-				terminal_cursor_up(1);
-				break;
-			case 'l': // FIXME
-				terminal_cursor_right(1);
-				break;
+			case 'j': { // cursor down
+				index_t new_line_index;
+				bool found = filebuf_index_of(fb, current->file_index, (index_t) -1, "\n", &new_line_index);
+				if (found) {
+					terminal_cursor_down(1);
+					current->cursor_line++;
+					current->file_index = new_line_index + 1;
+				}
+				break; }
+			case 'k': { // cursor up
+				index_t new_line_index;
+				bool found = filebuf_index_of(fb, 0, current->file_index + 1, "\n", &new_line_index);
+				if (found) {
+					terminal_cursor_up(1);
+					current->cursor_line--;
+					current->file_index = new_line_index;
+				}
+				break; }
+			case 'l': { // cursor right
+				index_t new_line_index;
+				bool found = filebuf_index_of(fb, current->file_index, current->file_index + 2, "\n", &new_line_index);
+				if (found) break;
+				if (current->file_index < fb->length) {
+					terminal_cursor_right(1);
+					current->cursor_char++;
+					current->file_index++;
+				}
+				break; }
 			case 'i': // FIXME
 				// terminal_cursor_right(word_len);
 				break;
@@ -93,7 +110,6 @@ int main(int arg_count, char **args) {
 			case 'f': 
 				mode = MODE_EDITOR;
 				insert_file_index = current->file_index;
-				buf_insert_count = 0;
 				insert_length = 0;
 				delete_before_length = 0;
 				delete_after_length = 0;
@@ -104,26 +120,42 @@ int main(int arg_count, char **args) {
 
 			// TODO delete any currently selected text if character other than escape is inserted
 			switch (c) {
-			case '\b': // backspace
+			case '\b': { // backspace
+				if (insert_length == 0 || insert_file_index == 0) {
+					redraw = false;
+					break;
+				}
+
 				// can't move cursor unless deleting or typing in editor mode,
 				// so we only have to worry about counting number of characters deleted via backspace
 				if (insert_length > 0) {
 					insert_length--;
+					if (buf_insert_text[insert_length] == '\n') {
+						current->cursor_line--;
+					} else {
+						current->cursor_char--;
+					}
 				} else if (insert_file_index > 0) {
 					delete_before_length++;
-				} else {
-					redraw = false;
+					if (filebuf_char_at(fb, insert_file_index - delete_before_length) == '\n') {
+						current->cursor_line--;
+					} else {
+						current->cursor_char--;
+					}
 				}
-				break;
-			case 127: // delete
+				current->file_index--;
+				terminal_cursor_left(delete_before_length);
+				draw_char(' ');
+				break; }
+			case 127: { // delete
 				index_t end_index = insert_file_index - (delete_before_length + delete_after_length) + insert_length;
 				if (end_index < fb->length) {
 					delete_after_length++;
 				} else {
 					redraw = false;
 				}
-				break;
-			case '': // escape
+				break; }
+			case '\033': // escape
 				filebuf_insert(fb, buf_insert_text, insert_file_index, insert_length, delete_before_length, delete_after_length);
 				mode = MODE_COMMAND; 
 				redraw = false;
@@ -135,16 +167,24 @@ int main(int arg_count, char **args) {
 					// (rather than breaking here and preventing additional text entry)
 					break;
 				}
+				draw_char(c);
 				buf_insert_text[insert_length] = c;
 				insert_length++;
+				current->file_index++;
+				if (c == '\n') {
+					current->cursor_line++;
+					current->cursor_char = 1;
+				} else {
+					current->cursor_char++;
+				}
 				break;
 			}
-
 			if (redraw) {
-			 	// FIXME need to update char/line of window when moving cursor (elsewhere in code)
-				// draw_chars(current, current->file_index, insert_length);
+				draw_line(current, current->file_index + delete_after_length);
 			}
 		}
+
+		draw_cursor_position(current);
 	}
 	return EXIT_SUCCESS;
 }

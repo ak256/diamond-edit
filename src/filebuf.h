@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef uint32_t index_t;
+typedef uint32_t index_t; // must be an unsigned integer type
 
 #define BUF_ID_ORIGIN false
 #define BUF_ID_MODIFY true
@@ -74,6 +74,11 @@ void filebuf_insert(struct FileBuf *fb, char *inserted_text, index_t insert_inde
 char *filebuf_get_buffer(struct FileBuf *fb, struct PieceTableEntry *entry);
 char *filebuf_get_text(struct FileBuf *fb, struct PieceTableEntry *entry);
 
+struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index, index_t *relative_index);
+
+char filebuf_char_at(struct FileBuf *fb, index_t file_index);
+
+bool filebuf_index_of(struct FileBuf *fb, index_t start_index, index_t end_index, const char *string, index_t *result_index);
 bool filebuf_write(struct FileBuf *buf);
 bool filebuf_read(struct FileBuf *buf, char *path);
 
