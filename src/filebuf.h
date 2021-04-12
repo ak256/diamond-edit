@@ -79,6 +79,7 @@ struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index,
 char filebuf_char_at(struct FileBuf *fb, index_t file_index);
 
 bool filebuf_index_of(struct FileBuf *fb, index_t start_index, index_t end_index, const char *string, index_t *result_index);
+bool filebuf_last_index_of(struct FileBuf *fb, index_t start_index, index_t end_index, const char *string, index_t *result_index);
 bool filebuf_write(struct FileBuf *buf);
 bool filebuf_read(struct FileBuf *buf, char *path);
 

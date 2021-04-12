@@ -13,7 +13,7 @@ void window_init(struct Window *window) {
 	window->right = NULL;
 	window->file_index = 0;
 	window->cursor_line = 1;
-	window->cursor_char = 1;
+	window->cursor_column = 1;
 	window->x = 0;
 	window->y = 0;
 	window->width = 0;

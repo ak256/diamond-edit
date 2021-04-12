@@ -15,7 +15,8 @@ struct Window {
 	struct FileBuf filebuf;
 	index_t file_index; // current position in file
 	uint32_t cursor_line; // cursor x within terminal
-	uint32_t cursor_char; // cursor y within terminal 
+	uint32_t cursor_column; // cursor y within terminal 
+	uint32_t cursor_column_jump; // when moving to a line that has less columns, jump to it's last char, but save the char position here for jumping back to same char position on lines that have enough columns
 	uint32_t x; // position in terminal
 	uint32_t y;
 	uint32_t width; // number of columns 

@@ -49,6 +49,7 @@ int main(int arg_count, char **args) {
 	terminal_init();
 	terminal_clear();
 	terminal_cursor_home();
+	draw_cursor_position(current);
 	signal(SIGINT, &interrupt_handler);
 
 	char c;
@@ -64,12 +65,11 @@ int main(int arg_count, char **args) {
 
 		if (mode == MODE_COMMAND) {
 			switch (c) {
-			// FIXME cursor movement is very buggy and cursor counter doesn't work properly either
 			case 'h': // cursor left
-				// FIXME don't 'go left' if at beginning of line
-				if (current->file_index > 0) {
+				if (current->cursor_column > 1) {
 					terminal_cursor_left(1);
-					current->cursor_char--;
+					current->cursor_column--;
+					current->cursor_column_jump = current->cursor_column;
 					current->file_index--;
 				}
 				break;
@@ -79,27 +79,67 @@ int main(int arg_count, char **args) {
 				if (found) {
 					terminal_cursor_down(1);
 					current->cursor_line++;
-					current->file_index = new_line_index + 1;
+
+					// determine line length for column number by finding the end index (marked by next new line)
+					index_t line_length;
+					index_t next_new_line_index;
+					found = filebuf_index_of(fb, new_line_index + 1, (index_t) -1, "\n", &next_new_line_index);
+					if (found) {
+						line_length = next_new_line_index - new_line_index;
+					} else {
+						line_length = fb->length - new_line_index;
+					}
+
+					// reposition cursor column
+					if (current->cursor_column_jump < line_length) {
+						// inserting at same relative column index
+						current->cursor_column = current->cursor_column_jump;
+						current->file_index = new_line_index + current->cursor_column;
+					} else {
+						// inserting BEFORE the new-line char (at the end of the current line)
+						current->cursor_column = line_length;
+						current->file_index = next_new_line_index; // FIXME next_new_line_index may not be defined here!
+					}
+					terminal_cursor_set_column(current->cursor_column);
 				}
 				break; }
 			case 'k': { // cursor up
 				index_t new_line_index;
-				bool found = filebuf_index_of(fb, 0, current->file_index + 1, "\n", &new_line_index);
+				bool found = filebuf_last_index_of(fb, 0, current->file_index, "\n", &new_line_index);
 				if (found) {
 					terminal_cursor_up(1);
 					current->cursor_line--;
-					current->file_index = new_line_index;
+
+					// determine line length for column number by finding the start index (marked by next new line)
+					index_t line_length;
+					index_t prev_new_line_index;
+					found = filebuf_last_index_of(fb, 0, new_line_index, "\n", &prev_new_line_index);
+					if (found) {
+						line_length = new_line_index - prev_new_line_index;
+					} else {
+						line_length = new_line_index;
+					}
+
+					// reposition cursor column
+					if (current->cursor_column_jump < line_length) {
+						// inserting at same relative column index
+						current->cursor_column = current->cursor_column_jump;
+						current->file_index = prev_new_line_index + current->cursor_column; // FIXME prev_new_line_index may not be defined here!
+					} else {
+						// inserting BEFORE the new-line char (at the end of the current line)
+						current->cursor_column = line_length;
+						current->file_index = new_line_index;
+					}
+					terminal_cursor_set_column(current->cursor_column);
 				}
 				break; }
 			case 'l': { // cursor right
-				index_t new_line_index;
-				bool found = filebuf_index_of(fb, current->file_index, current->file_index + 2, "\n", &new_line_index);
-				if (found) break;
-				if (current->file_index < fb->length) {
-					terminal_cursor_right(1);
-					current->cursor_char++;
-					current->file_index++;
-				}
+				if (current->file_index >= fb->length || filebuf_char_at(fb, current->file_index) == '\n') break; // already at end of the line
+
+				terminal_cursor_right(1);
+				current->cursor_column++;
+				current->cursor_column_jump = current->cursor_column;
+				current->file_index++;
 				break; }
 			case 'i': // FIXME
 				// terminal_cursor_right(word_len);
@@ -133,14 +173,14 @@ int main(int arg_count, char **args) {
 					if (buf_insert_text[insert_length] == '\n') {
 						current->cursor_line--;
 					} else {
-						current->cursor_char--;
+						current->cursor_column--;
 					}
 				} else if (insert_file_index > 0) {
 					delete_before_length++;
 					if (filebuf_char_at(fb, insert_file_index - delete_before_length) == '\n') {
 						current->cursor_line--;
 					} else {
-						current->cursor_char--;
+						current->cursor_column--;
 					}
 				}
 				current->file_index--;
@@ -159,6 +199,7 @@ int main(int arg_count, char **args) {
 				filebuf_insert(fb, buf_insert_text, insert_file_index, insert_length, delete_before_length, delete_after_length);
 				mode = MODE_COMMAND; 
 				redraw = false;
+				current->cursor_column_jump = current->cursor_column;
 				break;
 			default: 
 				if (insert_length >= buf_insert_text_size) {
@@ -173,9 +214,9 @@ int main(int arg_count, char **args) {
 				current->file_index++;
 				if (c == '\n') {
 					current->cursor_line++;
-					current->cursor_char = 1;
+					current->cursor_column = 1;
 				} else {
-					current->cursor_char++;
+					current->cursor_column++;
 				}
 				break;
 			}
@@ -183,7 +224,6 @@ int main(int arg_count, char **args) {
 				draw_line(current, current->file_index + delete_after_length);
 			}
 		}
-
 		draw_cursor_position(current);
 	}
 	return EXIT_SUCCESS;

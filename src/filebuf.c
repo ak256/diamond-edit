@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <string.h>
 
 #include "filebuf.h"
 #include "config.h"
@@ -157,25 +158,28 @@ static void erase_redo_history(struct FileBuf *fb) {
 }
 
 /* Retrieves the piece table entry at the given actual character index in the file.
- * Returns NULL if the table is empty!
+ * Returns NULL if the table is empty or the index is invalid.
  *
+ * file_index - must be a valid index within the file (i.e. 0 <= file_index < file length)
  * relative_index - this function stores the relative index within the entry that the file index corresponds with. if NULL, is ignored.
  */
 struct PieceTableEntry *filebuf_entry_at(struct FileBuf *fb, index_t file_index, index_t *relative_index) {
+	if (file_index >= fb->length) return NULL;
+
 	struct PieceTableEntry *at = fb->table.first_entry;
-	if (at == NULL) return NULL;
-
 	index_t i = 0;
-	while (i < file_index) {
-		i += at->length;
-		if (at->next == NULL) break;
-
+	while (at != NULL) {
+		index_t new_i = i + at->length;
+		if (new_i >= file_index) {
+			if (relative_index != NULL) {
+				*relative_index = file_index - i;
+			}
+			return at;
+		}
+		i = new_i;
 		at = at->next;
 	}
-	if (relative_index != NULL) {
-		*relative_index = i - file_index;
-	}
-	return at;
+	return NULL;
 }
 
 /* Splits the entry into two at the given index within the entry. 
@@ -348,13 +352,17 @@ static inline void fseeku(FILE *stream, index_t offset, int reference) {
 	#endif
 }
 
-/* Returns the character at the index in the file.
+/* Returns the character at the index in the file, or, value 0 if unable to get a character.
  * NOTE: this should not be used for iterating over the file buffer to access each character in succession and the like.
  * Doing so would be incredibly inefficient. Instead, iterate over the piece table linked list.
  */
 char filebuf_char_at(struct FileBuf *fb, index_t file_index) {
+	if (file_index >= fb->length) return 0;
+
 	index_t relative_index;
 	struct PieceTableEntry *at = filebuf_entry_at(fb, file_index, &relative_index);
+	if (at == NULL) return (char) 0;
+
 	char *text = filebuf_get_text(fb, at);
 	return text[relative_index];
 }
@@ -362,35 +370,73 @@ char filebuf_char_at(struct FileBuf *fb, index_t file_index) {
 /* Sets 'result_index' to the file index of the first occurrence of the given character sequence,
  * search constrained between start_index (inclusive) and end_index (exclusive).
  * string - must be a valid, null-terminated string.
- * Returns whether successful. False if no occurrence found.
+ * Returns whether successful. False if no occurrence found (or invalid range or empty matching string).
  */
 bool filebuf_index_of(struct FileBuf *fb, index_t start_index, index_t end_index, const char *string, index_t *result_index) {
-	index_t index = start_index; // within file
+	if (end_index <= start_index || string[0] == '\0' || start_index >= fb->length) return false;
+
 	index_t string_match_index = 0; // current position we have matched up to in the string
 	index_t relative_index; // within current entry
 	struct PieceTableEntry *at = filebuf_entry_at(fb, start_index, &relative_index);
 	char *text = filebuf_get_text(fb, at);
-	while (index + relative_index < end_index) {
+	for (index_t i = start_index; i < end_index; i++) {
+		if (string[string_match_index] == '\0') {
+			*result_index = i;
+			return true;
+		}
 		if (relative_index >= at->length) {
 			if (at->next == NULL) return false;
 
 			relative_index = 0;
-			index += at->length;
 			at = at->next;
 			text = filebuf_get_text(fb, at);
 		}
-
 		if (text[relative_index] == string[string_match_index]) {
 			string_match_index++;
 		} else {
 			string_match_index = 0;
 		}
-
-		if (string[string_match_index] == '\0') {
-			*result_index = index + relative_index;
-			return true;
-		}
 		relative_index++;
+	}
+	return false;
+}
+
+/* Sets 'result_index' to the file index of the last occurrence of the given character sequence,
+ * search constrained between start_index (inclusive) and end_index (exclusive).
+ * string - must be a valid, null-terminated string.
+ * Returns whether successful. False if no occurrence found (or invalid range or empty matching string).
+ */
+bool filebuf_last_index_of(struct FileBuf *fb, index_t start_index, index_t end_index, const char *string, index_t *result_index) {
+	if (end_index <= start_index || string[0] == '\0') return false;
+	if (end_index - 1 >= fb->length) {
+		end_index = fb->length;
+	}
+
+	const int string_length = strlen(string);
+	index_t string_match_index = string_length - 1; // current position we have matched up to in the string
+	index_t relative_index; // within current entry
+	struct PieceTableEntry *at = filebuf_entry_at(fb, end_index - 1, &relative_index);
+	char *text = filebuf_get_text(fb, at);
+	for (index_t i = end_index - 1; i >= start_index; i--) {
+		if (text[relative_index] == string[string_match_index]) {
+			if (string_match_index == 0) {
+				*result_index = i;
+				return true;
+			} else {
+				string_match_index--;
+			}
+		} else {
+			string_match_index = string_length - 1;
+		}
+		if (relative_index == 0) {
+			if (at->prev == NULL) return false;
+
+			at = at->prev;
+			relative_index = at->length - 1;
+			text = filebuf_get_text(fb, at);
+		} else {
+			relative_index--;
+		}
 	}
 	return false;
 }

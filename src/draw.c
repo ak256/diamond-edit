@@ -57,7 +57,8 @@ void draw_line(struct Window *window, index_t file_index) {
 		char c = text[relative_index];
 		if (c == '\n') return;
 		draw_char(c);
-		terminal_cursor_right(1);
+		//terminal_cursor_right(1);
+		relative_index++;
 	}
 }
 
@@ -65,8 +66,8 @@ void draw_line(struct Window *window, index_t file_index) {
 void draw_cursor_position(struct Window *window) {
 	terminal_cursor_set(window->height - 1, 0);
 	terminal_clear_line();
-	printf("%u,%u (%u)", window->cursor_line, window->cursor_char, window->file_index);
-	terminal_cursor_set(window->cursor_line, window->cursor_char); // restore cursor position
+	printf("%u,%u (%u)", window->cursor_line, window->cursor_column, window->file_index);
+	terminal_cursor_set(window->cursor_line, window->cursor_column); // restore cursor position
 }
 
 inline void draw_set_char_color(int color) {
