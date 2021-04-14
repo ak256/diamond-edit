@@ -2,6 +2,7 @@
  * author: Andrew Klinge
  * 
  * Functions for drawing to the terminal window.
+ * See https://en.wikipedia.org/wiki/ANSI_escape_code#DL
  */
 
 #include <stdio.h>
@@ -27,6 +28,10 @@ void terminal_clear() {
 
 void terminal_clear_line() {
 	printf("\033[2K");
+}
+
+void terminal_clear_line_from_cursor() {
+	printf("\033[0K");
 }
 
 void terminal_cursor_home() {

@@ -10,6 +10,7 @@
 void terminal_init();
 void terminal_clear();
 void terminal_clear_line();
+void terminal_clear_line_from_cursor();
 void terminal_cursor_home();
 void terminal_cursor_set(uint32_t line, uint32_t column);
 void terminal_cursor_set_line(uint32_t line);

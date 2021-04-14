@@ -64,28 +64,40 @@ void draw_line(struct Window *window, index_t file_index) {
 	}
 }
 
-/* Draws a message at the bottom-most line of the window.
- * message - the message to display (valid null terminated string).
- *		NULL if none (this clears the previous message as well).
+/* Draws a message at the bottom-most line of the window. Message will be drawn higher
+ * if its length exceeds the width of the window.
+ * Returns: the number of characters drawn
+ * message - the message to display (valid null-terminated string)
  */
-void draw_message(struct Window *window, const char *message) {
-	terminal_cursor_set_line(window->height - 1);
+int draw_message(struct Window *window, const char *message) {
+	terminal_cursor_set(window->height, 0);
 	terminal_clear_line();
-	if (message != NULL) {
-		int message_length = strlen(message);
-		terminal_cursor_set_column(window->width - message_length);
-		printf("%s", message);
+
+	int message_length = strlen(message);
+	int message_height = message_length / window->width;
+	if (message_height > 0) {
+		terminal_cursor_up(message_height);
 	}
+	printf("%s", message);
 
 	// restore user cursor position
 	terminal_cursor_set(window->cursor_line, window->cursor_column); 
+	return message_length;
 }
 
-/* Draws the current cursor and file position at the bottom-most line of the screen. */
-void draw_current_position(struct Window *window) {
-	terminal_cursor_set(window->height - 1, 0);
-	printf("%u,%u (%u)", window->width, window->height, window->file_index);
-	//printf("%u,%u (%u)", window->cursor_line, window->cursor_column, window->file_index);
+/* Clears the message line of the window. */
+void draw_clear_message(struct Window *window) {
+	terminal_cursor_set(window->height, 0);
+	terminal_clear_line();
+}
+
+/* Draws the current cursor and file position at the bottom-most line of the screen. 
+ * column - the terminal column to draw starting at (default: 0)
+ */
+void draw_current_position(struct Window *window, uint32_t column) {
+	terminal_cursor_set(window->height, column);
+	terminal_clear_line_from_cursor();
+	printf("%u,%u (%u)", window->cursor_line, window->cursor_column, window->file_index);
 
 	// restore user cursor position
 	terminal_cursor_set(window->cursor_line, window->cursor_column); 

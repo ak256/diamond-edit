@@ -52,7 +52,7 @@ int main(int arg_count, char **args) {
 	terminal_init();
 	terminal_clear();
 	terminal_cursor_home();
-	draw_current_position(current);
+	draw_current_position(current, 0);
 	signal(SIGINT, &interrupt_handler);
 
 	char c;
@@ -63,10 +63,14 @@ int main(int arg_count, char **args) {
 	index_t insert_file_index;
 	index_t delete_before_length;
 	index_t delete_after_length;
-	while ((c = getchar()) != EOF) {
+	while (1) {
 		struct FileBuf *fb = &current->filebuf; // alias
+		// we draw cursor position every frame. it's offset may be shifted if a message is also drawn
 
 		if (mode == MODE_COMMAND) {
+			draw_current_position(current, 0);
+
+			char c = getchar();
 			switch (c) {
 			case 'h': // cursor left
 				if (current->cursor_column > 1) {
@@ -76,6 +80,9 @@ int main(int arg_count, char **args) {
 					current->file_index--;
 				}
 				break;
+			// FIXME having a weird issue where sometimes the cursor won't go down even though it can, 
+			// because the index is somehow messed up so it thinks its on the last line? probably a bug in
+			// both cursor up and down cases
 			case 'j': { // cursor down
 				index_t new_line_index;
 				bool found = filebuf_index_of(fb, current->file_index, (index_t) -1, "\n", &new_line_index);
@@ -157,16 +164,30 @@ int main(int arg_count, char **args) {
 				delete_before_length = 0;
 				delete_after_length = 0;
 				break;
+			// TODO selection
+			case 'H':
+				break;
+			case 'J':
+				break;
+			case 'K':
+				break;
+			case 'L':
+				break;
 			}
 		} else if (mode == MODE_EDITOR) {
-			bool redraw = true;
+			int message_chars_drawn = draw_message(current, "EDIT");
+			int draw_current_position_offset = message_chars_drawn + 2; // last char + space
+			draw_current_position(current, draw_current_position_offset);
 
 			// TODO delete any currently selected text if character other than escape is inserted
+			bool redraw_line = true;
+			char c = getchar();
 			switch (c) {
+			case 127:
 			case '\b': { // backspace
 				draw_message(current, "BACKSPACE BTN PRESSED!");
 				if (insert_length == 0 || insert_file_index == 0) {
-					redraw = false;
+					redraw_line = false;
 					break;
 				}
 
@@ -192,24 +213,23 @@ int main(int arg_count, char **args) {
 				draw_char(' ');
 				terminal_cursor_left(1);
 				break; }
-			case 127: { // delete
+			/*case 127: { // delete
 				draw_message(current, "DELETE BTN PRESSED!");
 				index_t end_index = insert_file_index - (delete_before_length + delete_after_length);
 				if (end_index < fb->length + insert_length) {
 					delete_after_length++;
 				} else {
-					redraw = false;
+					redraw_line = false;
 				}
-				break; }
+				break; }*/
 			case '\033': // escape
-				draw_message(current, NULL);
 				filebuf_insert(fb, buf_insert_text, insert_file_index, insert_length, delete_before_length, delete_after_length);
+				draw_clear_message(current);
 				mode = MODE_COMMAND; 
-				redraw = false;
+				redraw_line = false;
 				current->cursor_column_jump = current->cursor_column;
 				break;
 			default: 
-				draw_message(current, "recorded key press");
 				if (insert_length >= buf_insert_text_size) {
 					// TODO probably just want to push the full buffer using filebuf_insert,
 					// clear it, then continue inserting anew.
@@ -230,11 +250,11 @@ int main(int arg_count, char **args) {
 				}
 				break;
 			}
-			if (redraw) {
+			if (redraw_line) {
 				draw_line(current, insert_file_index + delete_after_length);
 			}
 		}
-		draw_current_position(current);
+
 		// TODO detect terminal resize and update windows accordingly
 	}
 	return EXIT_SUCCESS;
