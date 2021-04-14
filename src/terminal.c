@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <stdbool.h>
+#include <sys/ioctl.h>
 
 #include "terminal.h"
 
@@ -64,15 +65,18 @@ void terminal_cursor_left(uint32_t n) {
  * Returns whether succeeded.
  *
  * Modified from: VIM - Vi IMproved by Bram Moolenaar
+ *		https://github.com/vim/vim/blob/master/src/os_unix.c
+ *		int mch_get_shellsize(void);
  */
 bool terminal_get_size(uint32_t *cols, uint32_t *rows) {
 	// using ioctl
 	// Try using TIOCGWINSZ first, some systems that have it also define
 	// TIOCGSIZE but don't have a struct ttysize.
-	# ifdef TIOCGWINSZ
+	#ifdef TIOCGWINSZ
 	{
 		struct winsize ws;
 		int fd = 1;
+		int read_cmd_fd = fileno(stdin);
 
 		// When stdout is not a tty, use stdin for the ioctl().
 		if (!isatty(fd) && isatty(read_cmd_fd)) {
@@ -84,11 +88,12 @@ bool terminal_get_size(uint32_t *cols, uint32_t *rows) {
 		}
 		return true;
 	}
-	# else // TIOCGWINSZ
-	# ifdef TIOCGSIZE
+	#else // TIOCGWINSZ
+	#ifdef TIOCGSIZE
 	{
 		struct ttysize ts;
 		int fd = 1;
+		int read_cmd_fd = fileno(stdin);
 
 		// When stdout is not a tty, use stdin for the ioctl().
 		if (!isatty(fd) && isatty(read_cmd_fd)) {
@@ -100,7 +105,7 @@ bool terminal_get_size(uint32_t *cols, uint32_t *rows) {
 		}
 		return true;
 	}
-	# endif // TIOCGSIZE
-	# endif // TIOCGWINSZ
+	#endif // TIOCGSIZE
+	#endif // TIOCGWINSZ
 	return false;
 }

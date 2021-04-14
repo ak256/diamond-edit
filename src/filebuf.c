@@ -317,13 +317,14 @@ void filebuf_redo(struct FileBuf *fb) {
 
 /* Returns the character buffer that the given entry uses. */
 char *filebuf_get_buffer(struct FileBuf *fb, struct PieceTableEntry *entry) {
-	switch (entry->buf_id) {
-	case BUF_ID_ORIGIN: return fb->table.origin_buf;
-	case BUF_ID_MODIFY: return fb->table.modify_buf;
-	default:
-		fprintf(stderr, "char buffer ID %i is invalid!\n", entry->buf_id);
-		exit(EXIT_FAILURE);
+	if (entry->buf_id == BUF_ID_ORIGIN) {
+		return fb->table.origin_buf;
+	} else if (entry->buf_id == BUF_ID_MODIFY) {
+		return fb->table.modify_buf;
 	}
+
+	fprintf(stderr, "char buffer ID %i is invalid!\n", entry->buf_id);
+	exit(EXIT_FAILURE);
 }
 
 /* Returns a pointer to the beginning of the entry's text in the file.
@@ -402,7 +403,7 @@ bool filebuf_index_of(struct FileBuf *fb, index_t start_index, index_t end_index
 }
 
 /* Sets 'result_index' to the file index of the last occurrence of the given character sequence,
- * search constrained between start_index (inclusive) and end_index (exclusive).
+ * search constrained between start_index (inclusive) and end_index (exclusive). Will not modify it if fails.
  * string - must be a valid, null-terminated string.
  * Returns whether successful. False if no occurrence found (or invalid range or empty matching string).
  */

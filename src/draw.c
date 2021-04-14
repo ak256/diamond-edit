@@ -2,6 +2,8 @@
  * author: Andrew Klinge
  */
 
+#include <string.h>
+
 #include "draw.h"
 #include "terminal.h"
 
@@ -62,14 +64,35 @@ void draw_line(struct Window *window, index_t file_index) {
 	}
 }
 
-/* Draws the line and column numbers for the cursor position at the bottom-left of the window. */
-void draw_cursor_position(struct Window *window) {
-	terminal_cursor_set(window->height - 1, 0);
+/* Draws a message at the bottom-most line of the window.
+ * message - the message to display (valid null terminated string).
+ *		NULL if none (this clears the previous message as well).
+ */
+void draw_message(struct Window *window, const char *message) {
+	terminal_cursor_set_line(window->height - 1);
 	terminal_clear_line();
-	printf("%u,%u (%u)", window->cursor_line, window->cursor_column, window->file_index);
-	terminal_cursor_set(window->cursor_line, window->cursor_column); // restore cursor position
+	if (message != NULL) {
+		int message_length = strlen(message);
+		terminal_cursor_set_column(window->width - message_length);
+		printf("%s", message);
+	}
+
+	// restore user cursor position
+	terminal_cursor_set(window->cursor_line, window->cursor_column); 
 }
 
+/* Draws the current cursor and file position at the bottom-most line of the screen. */
+void draw_current_position(struct Window *window) {
+	terminal_cursor_set(window->height - 1, 0);
+	printf("%u,%u (%u)", window->width, window->height, window->file_index);
+	//printf("%u,%u (%u)", window->cursor_line, window->cursor_column, window->file_index);
+
+	// restore user cursor position
+	terminal_cursor_set(window->cursor_line, window->cursor_column); 
+}
+
+/* Sets the color for any characters drawn to the terminal later. */
 inline void draw_set_char_color(int color) {
+	// FIXME only sets color to red currently
 	printf("\033[0;31m");
 }
