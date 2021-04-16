@@ -8,17 +8,8 @@
 #include <signal.h>
 
 #include "window.h"
-#include "draw.h"
 #include "terminal.h"
 #include "filebuf.h"
-
-enum editor_modes {
-	MODE_COMMAND,
-	MODE_EDITOR
-};
-
-// current editor mode
-static int mode = MODE_COMMAND;
 
 static void interrupt_handler(int sig) {
 	signal(sig, SIG_IGN);
@@ -32,27 +23,26 @@ static void interrupt_handler(int sig) {
 }
 
 int main(int arg_count, char **args) {
-	struct Window root;
-	window_init(&root);
-	if (!terminal_get_size(&root.width, &root.height)) {
-		fprintf(stderr, "Failed to get current window size!\n");
+	struct Window root_window;
+	window_init(&root_window);
+	if (!terminal_get_size(&root_window.width, &root_window.height)) {
+		fprintf(stderr, "Failed to get window size!\n");
 		exit(EXIT_FAILURE);
 	}
 
-	struct Window *current = &root;
-	filebuf_init(&current->filebuf);
+	struct Window *current_window = &root_window;
+	filebuf_init(&current_window->filebuf);
 	if (arg_count > 2) {
 		fprintf(stderr, "Opening multiple files at once not supported yet\n");
 		exit(EXIT_FAILURE);
 	} else if (arg_count == 2) {
-		filebuf_read(&current->filebuf, args[1]);
-		current->filebuf.path = args[1];
+		filebuf_read(&current_window->filebuf, args[1]);
+		current_window->filebuf.path = args[1];
 	}
 	
 	terminal_init();
 	terminal_clear();
 	terminal_cursor_home();
-	draw_current_position(current, 0);
 	signal(SIGINT, &interrupt_handler);
 
 	char c;
@@ -64,20 +54,19 @@ int main(int arg_count, char **args) {
 	index_t delete_before_length;
 	index_t delete_after_length;
 	while (1) {
-		struct FileBuf *fb = &current->filebuf; // alias
-		// we draw cursor position every frame. it's offset may be shifted if a message is also drawn
+		struct FileBuf *fb = &current_window->filebuf; // alias
 
-		if (mode == MODE_COMMAND) {
-			draw_current_position(current, 0);
+		window_draw_info_line(current_window);
 
+		if (current_window->editor.mode == MODE_COMMAND) {
 			char c = getchar();
 			switch (c) {
 			case 'h': // cursor left
-				if (current->cursor_column > 1) {
+				if (current_window->editor.cursor_column > 1) {
 					terminal_cursor_left(1);
-					current->cursor_column--;
-					current->cursor_column_jump = current->cursor_column;
-					current->file_index--;
+					current_window->editor.cursor_column--;
+					current_window->editor.cursor_column_jump = current_window->editor.cursor_column;
+					current_window->editor.file_index--;
 				}
 				break;
 			// FIXME having a weird issue where sometimes the cursor won't go down even though it can, 
@@ -85,7 +74,7 @@ int main(int arg_count, char **args) {
 			// both cursor up and down cases
 			case 'j': { // cursor down
 				index_t new_line_index;
-				bool found = filebuf_index_of(fb, current->file_index, (index_t) -1, "\n", &new_line_index);
+				bool found = filebuf_index_of(fb, current_window->editor.file_index, (index_t) -1, "\n", &new_line_index);
 				if (found) {
 					// determine line length for column number by finding the end index (marked by next new line)
 					index_t line_length;
@@ -98,24 +87,24 @@ int main(int arg_count, char **args) {
 					}
 
 					// reposition cursor column
-					if (current->cursor_column_jump < line_length) {
+					if (current_window->editor.cursor_column_jump < line_length) {
 						// inserting at same relative column index
-						current->cursor_column = current->cursor_column_jump;
-						current->file_index = new_line_index + current->cursor_column;
+						current_window->editor.cursor_column = current_window->editor.cursor_column_jump;
+						current_window->editor.file_index = new_line_index + current_window->editor.cursor_column;
 					} else {
 						// inserting BEFORE the new-line char (at the end of the current line)
-						current->cursor_column = line_length;
-						current->file_index = next_new_line_index;
+						current_window->editor.cursor_column = line_length;
+						current_window->editor.file_index = next_new_line_index;
 					}
-					terminal_cursor_set_column(current->cursor_column);
+					terminal_cursor_set_column(current_window->editor.cursor_column);
 
 					terminal_cursor_down(1);
-					current->cursor_line++;
+					current_window->editor.cursor_line++;
 				}
 				break; }
 			case 'k': { // cursor up
 				index_t new_line_index;
-				bool found = filebuf_last_index_of(fb, 0, current->file_index, "\n", &new_line_index);
+				bool found = filebuf_last_index_of(fb, 0, current_window->editor.file_index, "\n", &new_line_index);
 				if (found) {
 					// determine line length for column number by finding the start index (marked by next new line)
 					index_t line_length;
@@ -128,28 +117,28 @@ int main(int arg_count, char **args) {
 					}
 
 					// reposition cursor column // TODO this doesn't account for line wrap
-					if (current->cursor_column_jump < line_length) {
+					if (current_window->editor.cursor_column_jump < line_length) {
 						// inserting at same relative column index
-						current->cursor_column = current->cursor_column_jump;
-						current->file_index = prev_new_line_index + current->cursor_column;
+						current_window->editor.cursor_column = current_window->editor.cursor_column_jump;
+						current_window->editor.file_index = prev_new_line_index + current_window->editor.cursor_column;
 					} else {
 						// inserting BEFORE the new-line char (at the end of the current line)
-						current->cursor_column = line_length;
-						current->file_index = new_line_index;
+						current_window->editor.cursor_column = line_length;
+						current_window->editor.file_index = new_line_index;
 					}
-					terminal_cursor_set_column(current->cursor_column);
+					terminal_cursor_set_column(current_window->editor.cursor_column);
 
 					terminal_cursor_up(1);
-					current->cursor_line--;
+					current_window->editor.cursor_line--;
 				}
 				break; }
 			case 'l': { // cursor right
-				if (current->file_index >= fb->length || filebuf_char_at(fb, current->file_index) == '\n') break; // already at end of the line
+				if (current_window->editor.file_index >= fb->length || filebuf_char_at(fb, current_window->editor.file_index) == '\n') break; // already at end of the line
 
 				terminal_cursor_right(1);
-				current->cursor_column++;
-				current->cursor_column_jump = current->cursor_column;
-				current->file_index++;
+				current_window->editor.cursor_column++;
+				current_window->editor.cursor_column_jump = current_window->editor.cursor_column;
+				current_window->editor.file_index++;
 				break; }
 			case 'i': // FIXME
 				// terminal_cursor_right(word_len);
@@ -158,8 +147,8 @@ int main(int arg_count, char **args) {
 				// terminal_cursor_left(word_len);
 				break;
 			case 'f': 
-				mode = MODE_EDITOR;
-				insert_file_index = current->file_index;
+				current_window->editor.mode = MODE_EDITOR;
+				insert_file_index = current_window->editor.file_index;
 				insert_length = 0;
 				delete_before_length = 0;
 				delete_after_length = 0;
@@ -174,18 +163,14 @@ int main(int arg_count, char **args) {
 			case 'L':
 				break;
 			}
-		} else if (mode == MODE_EDITOR) {
-			int message_chars_drawn = draw_message(current, "EDIT");
-			int draw_current_position_offset = message_chars_drawn + 2; // last char + space
-			draw_current_position(current, draw_current_position_offset);
-
+		} else if (current_window->editor.mode == MODE_EDITOR) {
 			// TODO delete any currently selected text if character other than escape is inserted
 			bool redraw_line = true;
 			char c = getchar();
 			switch (c) {
 			case 127:
 			case '\b': { // backspace
-				draw_message(current, "BACKSPACE BTN PRESSED!");
+				current_window->editor.info_message = "BACKSPACE BTN PRESSED!";
 				if (insert_length == 0 || insert_file_index == 0) {
 					redraw_line = false;
 					break;
@@ -196,25 +181,25 @@ int main(int arg_count, char **args) {
 				if (insert_length > 0) {
 					insert_length--;
 					if (buf_insert_text[insert_length] == '\n') {
-						current->cursor_line--;
+						current_window->editor.cursor_line--;
 					} else {
-						current->cursor_column--;
+						current_window->editor.cursor_column--;
 					}
 				} else if (insert_file_index > 0) {
 					delete_before_length++;
 					if (filebuf_char_at(fb, insert_file_index - delete_before_length) == '\n') {
-						current->cursor_line--;
+						current_window->editor.cursor_line--;
 					} else {
-						current->cursor_column--;
+						current_window->editor.cursor_column--;
 					}
 				}
-				current->file_index--;
+				current_window->editor.file_index--;
 				terminal_cursor_left(1);
-				draw_char(' ');
+				window_draw_char(' ');
 				terminal_cursor_left(1);
 				break; }
 			/*case 127: { // delete
-				draw_message(current, "DELETE BTN PRESSED!");
+				window_draw_message(current_window, "DELETE BTN PRESSED!");
 				index_t end_index = insert_file_index - (delete_before_length + delete_after_length);
 				if (end_index < fb->length + insert_length) {
 					delete_after_length++;
@@ -224,10 +209,10 @@ int main(int arg_count, char **args) {
 				break; }*/
 			case '\033': // escape
 				filebuf_insert(fb, buf_insert_text, insert_file_index, insert_length, delete_before_length, delete_after_length);
-				draw_clear_message(current);
-				mode = MODE_COMMAND; 
+				current_window->editor.info_message = NULL;
+				current_window->editor.mode = MODE_COMMAND; 
 				redraw_line = false;
-				current->cursor_column_jump = current->cursor_column;
+				current_window->editor.cursor_column_jump = current_window->editor.cursor_column;
 				break;
 			default: 
 				if (insert_length >= buf_insert_text_size) {
@@ -239,19 +224,19 @@ int main(int arg_count, char **args) {
 
 				buf_insert_text[insert_length] = c;
 				insert_length++;
-				current->file_index++;
-				draw_char(c);
+				current_window->editor.file_index++;
+				window_draw_char(c);
 
 				if (c == '\n') {
-					current->cursor_line++;
-					current->cursor_column = 1;
+					current_window->editor.cursor_line++;
+					current_window->editor.cursor_column = 1;
 				} else {
-					current->cursor_column++;
+					current_window->editor.cursor_column++;
 				}
 				break;
 			}
 			if (redraw_line) {
-				draw_line(current, insert_file_index + delete_after_length);
+				window_draw_line(current_window, insert_file_index + delete_after_length);
 			}
 		}
 
