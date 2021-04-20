@@ -71,7 +71,7 @@ int main(int arg_count, char **args) {
 			char c = getchar();
 			switch (c) {
 			case 'h': { // cursor left
-				if (current_window->editor.cursor_column <= 1) break;
+				if (current_window->editor.file_index <= 0 || current_window->editor.cursor_column <= 1) break;
 
 				terminal_cursor_left(1);
 				current_window->editor.cursor_column--;
@@ -79,28 +79,29 @@ int main(int arg_count, char **args) {
 				current_window->editor.file_index--;
 				break; 
 			}
+			case 'l': { // cursor right
+				if (current_window->editor.file_index >= fb->length || filebuf_char_at(fb, current_window->editor.file_index) == '\n') break; // already at end of the line
+
+				terminal_cursor_right(1);
+				current_window->editor.cursor_column++;
+				current_window->editor.cursor_column_jump = current_window->editor.cursor_column;
+				current_window->editor.file_index++;
+				break;
+			}
 			case 'j': { // cursor down
 				index_t new_line_index;
 				bool found = filebuf_index_of(fb, current_window->editor.file_index, (index_t) -1, "\n", &new_line_index);
 				if (!found) break;
 
 				// determine line length for column number by finding the end index (marked by next new line)
-				index_t line_length;
+				index_t line_length; // not including new-line char
 				index_t next_new_line_index = fb->length; // default is length of file in case on last line of file
 				found = filebuf_index_of(fb, new_line_index + 1, (index_t) -1, "\n", &next_new_line_index);
 				if (found) {
-					line_length = next_new_line_index - new_line_index;
+					line_length = next_new_line_index - new_line_index - 1;
 				} else {
-					line_length = fb->length - new_line_index;
+					line_length = fb->length - new_line_index - 1;
 				}
-
-				// FIXME debugging why cursor down breaks file_index
-				current_window->editor.info_message = info_message_buf;
-				string_builder_append_string(&info_message_builder, "COLJUMP: ");
-				string_builder_append_uint32(&info_message_builder, current_window->editor.cursor_column_jump);
-				string_builder_append_string(&info_message_builder, ", LINELEN: ");
-				string_builder_append_uint32(&info_message_builder, line_length);
-				string_builder_reset(&info_message_builder);
 
 				// reposition cursor column
 				if (current_window->editor.cursor_column_jump < line_length) {
@@ -109,7 +110,7 @@ int main(int arg_count, char **args) {
 					current_window->editor.file_index = new_line_index + current_window->editor.cursor_column - 1;
 				} else {
 					// inserting BEFORE the new-line char (at the end of the current line)
-					current_window->editor.cursor_column = line_length;
+					current_window->editor.cursor_column = line_length + 1;
 					current_window->editor.file_index = next_new_line_index;
 				}
 				terminal_cursor_set_column(current_window->editor.cursor_column);
@@ -124,11 +125,11 @@ int main(int arg_count, char **args) {
 				if (!found) break;
 
 				// determine line length for column number by finding the start index (marked by next new line)
-				index_t line_length;
+				index_t line_length; // not including new-line char
 				index_t prev_new_line_index = 0; // default is 0 (start of file) in case we are on the first line of the file
 				found = filebuf_last_index_of(fb, 0, new_line_index, "\n", &prev_new_line_index);
 				if (found) {
-					line_length = new_line_index - prev_new_line_index;
+					line_length = new_line_index - prev_new_line_index - 1;
 				} else {
 					line_length = new_line_index;
 				}
@@ -137,10 +138,10 @@ int main(int arg_count, char **args) {
 				if (current_window->editor.cursor_column_jump < line_length) {
 					// inserting at same relative column index
 					current_window->editor.cursor_column = current_window->editor.cursor_column_jump;
-					current_window->editor.file_index = prev_new_line_index + current_window->editor.cursor_column;
+					current_window->editor.file_index = prev_new_line_index + current_window->editor.cursor_column - 1;
 				} else {
 					// inserting BEFORE the new-line char (at the end of the current line)
-					current_window->editor.cursor_column = line_length;
+					current_window->editor.cursor_column = line_length + 1;
 					current_window->editor.file_index = new_line_index;
 				}
 				terminal_cursor_set_column(current_window->editor.cursor_column);
@@ -149,16 +150,7 @@ int main(int arg_count, char **args) {
 				current_window->editor.cursor_line--;
 				break;
 			}
-			case 'l': { // cursor right
-				if (current_window->editor.file_index >= fb->length || filebuf_char_at(fb, current_window->editor.file_index) == '\n') break; // already at end of the line
-
-				terminal_cursor_right(1);
-				current_window->editor.cursor_column++;
-				current_window->editor.cursor_column_jump = current_window->editor.cursor_column;
-				current_window->editor.file_index++;
-				break;
-			}
-
+			
 			case 'i': // FIXME
 				// terminal_cursor_right(word_len);
 				break;
